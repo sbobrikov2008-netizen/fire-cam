@@ -3,81 +3,118 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Fire Cam</title>
+<meta name="viewport"
+content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Fire Cam 0.5</title>
 <style>
 *{box-sizing:border-box}
 html,body{
- margin:0;width:100%;height:100%;overflow:hidden;
- background:#08080a;color:#fff;
- font-family:-apple-system,BlinkMacSystemFont,Arial
+ margin:0;width:100%;height:100%;
+ overflow:hidden;background:#090909;
+ color:white;font-family:-apple-system,Arial
 }
 video{display:none}
-canvas{position:fixed;inset:0;width:100%;height:100%}
+canvas{
+ position:fixed;inset:0;
+ width:100%;height:100%
+}
 .ui{
- position:fixed;inset:0;pointer-events:none;
- padding:calc(env(safe-area-inset-top) + 16px) 16px
- calc(env(safe-area-inset-bottom) + 18px);
+ position:fixed;inset:0;
  display:flex;flex-direction:column;
- justify-content:space-between
+ justify-content:space-between;
+ padding:calc(env(safe-area-inset-top) + 18px) 16px
+ calc(env(safe-area-inset-bottom) + 20px);
+ pointer-events:none
 }
-.top,.bottom{
- display:flex;align-items:center;
- justify-content:space-between;gap:12px
+.top{
+ display:flex;align-items:flex-start;
+ justify-content:space-between;gap:10px
 }
-.brand{font-weight:800;font-size:22px;text-shadow:0 2px 10px #000}
+.brand{
+ font-size:22px;font-weight:900;
+ text-shadow:0 2px 8px #000
+}
 #status{
- font-size:12px;background:#111c;border-radius:12px;
- padding:10px;max-width:65%;overflow-wrap:anywhere
+ background:#111c;padding:10px;
+ border-radius:12px;font-size:12px;
+ max-width:55%;text-align:right
 }
-#detail{
- font-size:11px;max-width:65%;background:#111b;
- border-radius:10px;padding:8px;white-space:pre-wrap;
- max-height:90px;overflow:auto
+.controls{
+ display:flex;flex-direction:column;
+ gap:12px;align-items:stretch
 }
-.hint{font-size:13px;max-width:58%;text-shadow:0 2px 6px #000}
 button{
- pointer-events:auto;background:#ff792e;border:0;
- border-radius:16px;padding:14px 17px;
- font-weight:700;font-size:15px;color:#1c0a02
+ pointer-events:auto;border:0;
+ border-radius:16px;padding:16px;
+ font-size:15px;font-weight:750;
+ background:#ff792e;color:#190b04
 }
+button:disabled{opacity:.5}
+button.secondary{
+ background:#ffffff24;color:white;
+ backdrop-filter:blur(15px)
+}
+button.active{
+ background:#ff792e;color:#180b04
+}
+#debug{
+ pointer-events:auto;
+ background:#171717df;
+ border-radius:12px;padding:12px;
+ font-size:11px;line-height:1.5;
+ white-space:pre-wrap;
+ overflow-wrap:anywhere;
+ max-height:155px;overflow:auto;
+ display:none
+}
+#debug.show{display:block}
 #overlay{
- position:fixed;inset:0;z-index:5;
- background:radial-gradient(#402016,#08080a 75%);
- display:grid;place-items:center;padding:25px;text-align:center
+ position:fixed;inset:0;z-index:10;
+ display:flex;align-items:center;
+ justify-content:center;
+ background:radial-gradient(#4c2315,#090909 75%);
+ text-align:center;padding:25px
 }
-.panel{max-width:380px}
-.panel h1{font-size:36px}
-.panel p{line-height:1.5;color:#ddd}
-.hidden{display:none!important}
+.panel{max-width:360px}
+.panel h1{font-size:38px}
+.panel p{line-height:1.6;color:#ddd}
+#error{color:#ffb6a5;white-space:pre-wrap}
+.hint{
+ font-size:13px;text-align:center;
+ text-shadow:0 2px 8px black
+}
 </style>
 </head>
 <body>
-<video id="video" playsinline autoplay muted></video>
+
+<video id="video" autoplay muted playsinline></video>
 <canvas id="canvas"></canvas>
 
 <div class="ui">
- <div>
-  <div class="top">
-   <div class="brand">🔥 FIRE CAM</div>
-   <div id="status">Камера выключена</div>
-  </div>
-  <div id="detail" class="hidden"></div>
+ <div class="top">
+  <div class="brand">🔥 FIRE CAM</div>
+  <div id="status">Камера выключена</div>
  </div>
- <div class="bottom">
+
+ <div class="controls">
+  <div id="debug"></div>
   <div class="hint">
-   Раскрой ладонь — огонь появится.
+   Открой ладонь — огонь появится.
    Сожми кулак — погаснет.
   </div>
-  <button id="switch" disabled>↻ Камера</button>
+  <button id="scan" class="secondary" disabled>
+   ✋ Включить сканирование
+  </button>
+  <button id="switch" class="secondary" disabled>
+   ↻ Сменить камеру
+  </button>
  </div>
 </div>
 
 <div id="overlay">
  <div class="panel">
   <h1>🔥 Fire Cam</h1>
-  <p>Огненный шар над ладонью.
-  Сначала включим камеру, затем распознавание.</p>
+  <p>Магический огонь в твоей ладони</p>
   <button id="start">Включить камеру</button>
   <p id="error"></p>
  </div>
@@ -89,252 +126,294 @@ const video=$("video");
 const canvas=$("canvas");
 const ctx=canvas.getContext("2d");
 const status=$("status");
-const detail=$("detail");
-const overlay=$("overlay");
-const start=$("start");
+const debug=$("debug");
+const scanBtn=$("scan");
 const switchBtn=$("switch");
+const startBtn=$("start");
 
 let stream=null;
-let facing="environment";
 let detector=null;
+let scanning=false;
+let loading=false;
 let running=false;
+let facing="environment";
+
 let hand=null;
-let isOpen=false;
-let energy=0;
+let palmOpen=false;
+let firePower=0;
 let lastSeen=0;
-let lastVideoTime=-1;
-let lastDetect=0;
-let w=0,h=0,scale=1,dx=0,dy=0;
+let lastFrame=-1;
+let lastDetection=0;
 
-const mask=document.createElement("canvas");
-const mctx=mask.getContext("2d");
-const fg=document.createElement("canvas");
-const fctx=fg.getContext("2d");
+let W=0,H=0;
+let scale=1,dx=0,dy=0;
 
-function report(s,e){
- status.textContent=s;
- if(e){
-  detail.classList.remove("hidden");
-  detail.textContent=String(
-   e?.stack||e?.message||e
-  ).slice(0,500);
-  console.error(e);
- }
+const VERSION="0.10.14";
+const CDN=[
+ "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@"+VERSION,
+ "https://unpkg.com/@mediapipe/tasks-vision@"+VERSION
+];
+
+const MODEL=
+ "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+
+function setStatus(message){
+ status.textContent=message;
+}
+
+function showError(message){
+ debug.textContent=message;
+ debug.classList.add("show");
+ console.error(message);
+}
+
+function clearError(){
+ debug.textContent="";
+ debug.classList.remove("show");
 }
 
 function resize(){
  if(!video.videoWidth)return;
+
  const d=Math.min(devicePixelRatio||1,1.5);
- w=canvas.width=Math.round(innerWidth*d);
- h=canvas.height=Math.round(innerHeight*d);
- mask.width=fg.width=w;
- mask.height=fg.height=h;
- scale=Math.max(w/video.videoWidth,h/video.videoHeight);
- dx=(w-video.videoWidth*scale)/2;
- dy=(h-video.videoHeight*scale)/2;
-}
-addEventListener("resize",resize);
+ W=canvas.width=Math.round(innerWidth*d);
+ H=canvas.height=Math.round(innerHeight*d);
 
-function cameraDraw(c){
- c.save();
- c.translate(dx,dy);
+ scale=Math.max(
+  W/video.videoWidth,
+  H/video.videoHeight
+ );
+
+ dx=(W-video.videoWidth*scale)/2;
+ dy=(H-video.videoHeight*scale)/2;
+}
+
+window.addEventListener("resize",resize);
+
+function drawVideo(){
+ ctx.save();
+ ctx.translate(dx,dy);
+
  if(facing==="user"){
-  c.translate(video.videoWidth*scale,0);
-  c.scale(-1,1);
+  ctx.translate(video.videoWidth*scale,0);
+  ctx.scale(-1,1);
  }
- c.drawImage(video,0,0,
+
+ ctx.drawImage(
+  video,0,0,
   video.videoWidth*scale,
-  video.videoHeight*scale);
- c.restore();
+  video.videoHeight*scale
+ );
+ ctx.restore();
 }
 
-function pt(p){
+function point(p){
  return {
-  x:dx+(facing==="user"?1-p.x:p.x)*video.videoWidth*scale,
+  x:dx+(facing==="user"?1-p.x:p.x)
+    *video.videoWidth*scale,
   y:dy+p.y*video.videoHeight*scale
  };
 }
 
-function dist(a,b){
+function distance(a,b){
  return Math.hypot(a.x-b.x,a.y-b.y);
 }
-function mix(a,b,t){
+
+function lerp(a,b,t){
  return a+(b-a)*t;
 }
 
-function updateHand(result,t){
+function updateHand(result,time){
  const landmarks=result?.landmarks?.[0];
+
  if(!landmarks){
-  if(t-lastSeen>220){
-   hand=null;
-   isOpen=false;
+  if(time-lastSeen>250){
+   palmOpen=false;
   }
   return;
  }
- lastSeen=t;
- const p=landmarks.map(pt);
 
+ lastSeen=time;
+ const p=landmarks.map(point);
+
+ // Центр ладони
  const palm={
   x:(p[0].x+p[5].x+p[9].x+p[17].x)/4,
   y:(p[0].y+p[5].y+p[9].y+p[17].y)/4
  };
- const direction={
-  x:p[9].x-p[0].x,
-  y:p[9].y-p[0].y
- };
- const span=dist(p[5],p[17]);
 
+ const span=distance(p[5],p[17]);
+
+ // Распознавание раскрытых пальцев
  let extended=0;
- for(const [tip,joint] of [
+
+ const fingers=[
   [8,6],[12,10],[16,14],[20,18]
- ]){
-  if(dist(p[tip],p[0])>
-     dist(p[joint],p[0])*1.13){
+ ];
+
+ for(const [tip,joint] of fingers){
+  if(distance(p[tip],p[0])>
+     distance(p[joint],p[0])*1.13){
    extended++;
   }
  }
- isOpen=extended>=3;
 
+ palmOpen=extended>=3;
+
+ // Огненный шар в области ладони
  const target={
-  x:palm.x+direction.x*.55,
-  y:palm.y+direction.y*.55,
-  r:Math.max(15,Math.min(w*.3,span*.7)),
+  x:palm.x+(p[9].x-p[0].x)*.25,
+  y:palm.y+(p[9].y-p[0].y)*.25,
+  r:Math.max(18,Math.min(W*.25,span*.75)),
   points:p
  };
 
- if(!hand)hand=target;
- else{
-  hand.x=mix(hand.x,target.x,.28);
-  hand.y=mix(hand.y,target.y,.28);
-  hand.r=mix(hand.r,target.r,.24);
+ if(!hand){
+  hand=target;
+ }else{
+  hand.x=lerp(hand.x,target.x,.3);
+  hand.y=lerp(hand.y,target.y,.3);
+  hand.r=lerp(hand.r,target.r,.25);
   hand.points=p;
  }
 }
 
-function flame(x,y,r,t){
+function drawFire(x,y,r,t){
  ctx.save();
  ctx.globalCompositeOperation="screen";
 
+ // Большое мягкое свечение
  const glow=ctx.createRadialGradient(
-  x,y,0,x,y,r*2.4
+  x,y,0,x,y,r*2.6
  );
- glow.addColorStop(0,"#ffe6a688");
- glow.addColorStop(.35,"#ff8a2855");
- glow.addColorStop(1,"#ff330000");
+ glow.addColorStop(0,"rgba(255,220,110,.65)");
+ glow.addColorStop(.25,"rgba(255,120,15,.4)");
+ glow.addColorStop(.6,"rgba(255,45,0,.13)");
+ glow.addColorStop(1,"rgba(255,30,0,0)");
+
  ctx.fillStyle=glow;
  ctx.beginPath();
- ctx.arc(x,y,r*2.4,0,Math.PI*2);
+ ctx.arc(x,y,r*2.6,0,Math.PI*2);
  ctx.fill();
 
- for(let i=0;i<48;i++){
-  const q=(i*.618+t*(.25+(i%5)*.02))%1;
-  const a=i*2.399+t*.4;
-  const px=x+Math.cos(a)*r*q*.8;
-  const py=y+Math.sin(a)*r*q*.5-q*r*.55;
-  const s=r*(.1+.2*(1-q));
+ // Движущиеся языки пламени
+ for(let i=0;i<65;i++){
+  const phase=(i*.618+t*(.35+i%5*.025))%1;
+  const angle=i*2.399+t*.45;
+
+  const px=x+Math.cos(angle)*r*phase*.8;
+  const py=y+Math.sin(angle)*r*phase*.5
+       -phase*r*.7;
+
+  const size=r*(.12+.22*(1-phase));
 
   const g=ctx.createRadialGradient(
-   px,py,0,px,py,s*2
+   px,py,0,px,py,size*2
   );
-  g.addColorStop(0,"#fff6d9cc");
-  g.addColorStop(.35,"#ff9e25bb");
-  g.addColorStop(1,"#ff340000");
+
+  g.addColorStop(0,"rgba(255,245,185,.85)");
+  g.addColorStop(.35,"rgba(255,150,25,.7)");
+  g.addColorStop(1,"rgba(255,45,0,0)");
+
   ctx.fillStyle=g;
   ctx.beginPath();
-  ctx.arc(px,py,s*2,0,Math.PI*2);
+  ctx.arc(px,py,size*2,0,Math.PI*2);
   ctx.fill();
  }
 
+ // Светящееся ядро
  const core=ctx.createRadialGradient(
   x-r*.2,y-r*.2,0,x,y,r
  );
- core.addColorStop(0,"#fffde8");
- core.addColorStop(.25,"#ffe78a");
- core.addColorStop(.6,"#ff8d1a");
- core.addColorStop(1,"#e9310000");
+
+ core.addColorStop(0,"#fffde9");
+ core.addColorStop(.2,"#ffe88d");
+ core.addColorStop(.55,"#ff981e");
+ core.addColorStop(1,"rgba(255,50,0,0)");
+
  ctx.fillStyle=core;
  ctx.beginPath();
- ctx.arc(x,y,r*(1+.04*Math.sin(t*8)),0,Math.PI*2);
+ ctx.arc(
+  x,y,r*(1+.04*Math.sin(t*8)),
+  0,Math.PI*2
+ );
  ctx.fill();
+
+ // Искры
+ for(let i=0;i<28;i++){
+  const q=(i*.37+t*(.3+i%4*.05))%1;
+  const a=i*2.4;
+
+  const sx=x+Math.sin(a)*r*(.2+q);
+  const sy=y-r*(.2+q*1.5);
+
+  ctx.globalAlpha=(1-q)*.8;
+  ctx.fillStyle=i%3?"#ffac40":"#fff1bb";
+  ctx.beginPath();
+  ctx.arc(sx,sy,Math.max(1,r*.025),0,Math.PI*2);
+  ctx.fill();
+ }
 
  ctx.restore();
 }
 
-function drawOcclusion(p){
- mctx.clearRect(0,0,w,h);
- mctx.fillStyle="#fff";
- mctx.strokeStyle="#fff";
- mctx.lineJoin="round";
- mctx.lineCap="round";
-
- mctx.beginPath();
- [0,1,2,5,9,13,17].forEach((id,i)=>{
-  if(i)mctx.lineTo(p[id].x,p[id].y);
-  else mctx.moveTo(p[id].x,p[id].y);
- });
- mctx.closePath();
- mctx.fill();
-
- const span=dist(p[5],p[17]);
- const chains=[
-  [0,1,2,3,4],
-  [0,5,6,7,8],
-  [0,9,10,11,12],
-  [0,13,14,15,16],
-  [0,17,18,19,20]
- ];
-
- for(const chain of chains){
-  mctx.lineWidth=span*.19;
-  mctx.beginPath();
-  chain.forEach((id,i)=>{
-   if(i)mctx.lineTo(p[id].x,p[id].y);
-   else mctx.moveTo(p[id].x,p[id].y);
-  });
-  mctx.stroke();
- }
-
- fctx.clearRect(0,0,w,h);
- cameraDraw(fctx);
- fctx.globalCompositeOperation="destination-in";
- fctx.drawImage(mask,0,0);
- fctx.globalCompositeOperation="source-over";
- ctx.drawImage(fg,0,0);
-}
-
-function render(t){
+function render(time){
  if(!running)return;
 
  if(video.readyState>=2){
-  ctx.clearRect(0,0,w,h);
-  cameraDraw(ctx);
+  ctx.clearRect(0,0,W,H);
+  drawVideo();
 
-  if(detector &&
-     video.currentTime!==lastVideoTime &&
-     t-lastDetect>40){
-   lastVideoTime=video.currentTime;
-   lastDetect=t;
+  if(scanning&&detector&&
+     video.currentTime!==lastFrame&&
+     time-lastDetection>55){
+
+   lastFrame=video.currentTime;
+   lastDetection=time;
 
    try{
-    const res=detector.detectForVideo(video,t);
-    updateHand(res,t);
-    status.textContent=res.landmarks?.length?
-     (isOpen?"🔥 Ладонь открыта":"Раскрой ладонь"):
-     "Покажи ладонь";
+    const result=detector.detectForVideo(
+     video,time
+    );
+
+    updateHand(result,time);
+
+    if(result.landmarks?.length){
+     setStatus(
+      palmOpen?
+      "🔥 Ладонь открыта":
+      "✊ Раскрой ладонь"
+     );
+    }else{
+     setStatus("✋ Покажи ладонь");
+    }
    }catch(e){
-    report("Ошибка распознавания",e);
-    detector=null;
+    showError(
+     "Ошибка распознавания:\n"+
+     (e.message||String(e))
+    );
+    stopScanning();
    }
   }
 
-  energy+=((hand&&isOpen?1:0)-energy)*.13;
+  if(scanning){
+   if(time-lastSeen>350)palmOpen=false;
 
-  if(hand&&energy>.015){
-   ctx.save();
-   ctx.globalAlpha=Math.min(1,energy);
-   flame(hand.x,hand.y,hand.r*energy,t/1000);
-   ctx.restore();
-   drawOcclusion(hand.points);
+   const target=hand&&palmOpen?1:0;
+   firePower=lerp(firePower,target,.12);
+
+   if(hand&&firePower>.01){
+    ctx.save();
+    ctx.globalAlpha=Math.min(1,firePower);
+    drawFire(
+     hand.x,hand.y,
+     hand.r*firePower,
+     time/1000
+    );
+    ctx.restore();
+   }
+  }else{
+   firePower=0;
   }
  }
 
@@ -342,10 +421,17 @@ function render(t){
 }
 
 async function openCamera(){
- if(stream){
-  stream.getTracks().forEach(tr=>tr.stop());
+ const oldStream=stream;
+
+ // Запрашиваем новую камеру
+ // Если старая мешает, освобождаем её
+ if(oldStream){
+  oldStream.getTracks().forEach(t=>t.stop());
  }
- stream=await navigator.mediaDevices.getUserMedia({
+
+ stream=null;
+
+ const s=await navigator.mediaDevices.getUserMedia({
   audio:false,
   video:{
    facingMode:{ideal:facing},
@@ -354,61 +440,83 @@ async function openCamera(){
   }
  });
 
- video.srcObject=stream;
+ stream=s;
+ video.srcObject=s;
  await video.play();
 
  if(!video.videoWidth){
-  await new Promise(resolve=>{
+  await new Promise((resolve,reject)=>{
+   const timer=setTimeout(
+    ()=>reject(Error("Нет видеокадров")),5000
+   );
    video.addEventListener(
-    "loadedmetadata",resolve,{once:true}
+    "loadedmetadata",
+    ()=>{
+     clearTimeout(timer);
+     resolve();
+    },
+    {once:true}
    );
   });
  }
 
  resize();
  hand=null;
- isOpen=false;
- energy=0;
- lastVideoTime=-1;
+ palmOpen=false;
+ firePower=0;
+ lastFrame=-1;
+ lastSeen=0;
 }
 
-// Резервные источники MediaPipe
-const SOURCES=[
- {
-  js:"https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/+esm",
-  wasm:"https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm"
- },
- {
-  js:"https://unpkg.com/@mediapipe/tasks-vision@0.10.22/vision_bundle.mjs",
-  wasm:"https://unpkg.com/@mediapipe/tasks-vision@0.10.22/wasm"
+// Проверяем доступность модели отдельно
+async function getModel(){
+ const response=await fetch(MODEL);
+
+ if(!response.ok){
+  throw Error(
+   "Модель: HTTP "+response.status
+  );
  }
-];
 
-const MODEL_URLS=[
- "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
- "https://cdn.jsdelivr.net/gh/google-ai-edge/mediapipe@master/mediapipe/tasks/testdata/vision/hand_landmarker.task"
-];
+ const data=await response.arrayBuffer();
 
-async function loadModel(){
- let errors=[];
+ if(data.byteLength<10000){
+  throw Error("Файл модели повреждён");
+ }
 
- for(const source of SOURCES){
+ return new Uint8Array(data);
+}
+
+async function createDetector(){
+ const errors=[];
+
+ // Сначала загружаем модель
+ setStatus("Загрузка модели...");
+ const modelBytes=await getModel();
+
+ for(const base of CDN){
   try{
-   report("Загрузка библиотеки...");
+   setStatus("Загрузка MediaPipe...");
 
-   const mod=await import(source.js);
-   const vision=await mod.FilesetResolver.forVisionTasks(
-    source.wasm
+   const mod=await import(
+    base+"/vision_bundle.mjs"
    );
 
-   for(const modelAssetPath of MODEL_URLS){
-    for(const delegate of ["GPU","CPU"]){
-     try{
-      report("Загрузка модели ("+delegate+")...");
+   const vision=await mod.FilesetResolver
+    .forVisionTasks(base+"/wasm");
 
-      return await mod.HandLandmarker.createFromOptions(
+   // Сначала GPU, затем CPU
+   for(const delegate of ["GPU","CPU"]){
+    try{
+     setStatus("Запуск "+delegate+"...");
+
+     const instance=
+      await mod.HandLandmarker.createFromOptions(
        vision,{
-        baseOptions:{modelAssetPath,delegate},
+        baseOptions:{
+         modelAssetBuffer:modelBytes.slice(),
+         delegate
+        },
         runningMode:"VIDEO",
         numHands:1,
         minHandDetectionConfidence:.55,
@@ -416,35 +524,100 @@ async function loadModel(){
         minTrackingConfidence:.5
        }
       );
-     }catch(e){
-      errors.push(
-       source.js+" / "+delegate+": "+
-       String(e?.message||e)
-      );
-     }
+
+     return instance;
+    }catch(e){
+     errors.push(
+      delegate+": "+(e.message||String(e))
+     );
     }
    }
   }catch(e){
    errors.push(
-    source.js+": "+String(e?.message||e)
+    base+": "+(e.message||String(e))
    );
   }
  }
 
- throw new Error(errors.join("\n").slice(-1800));
+ throw Error(errors.join("\n"));
 }
 
-start.onclick=async()=>{
- start.disabled=true;
+function stopScanning(){
+ scanning=false;
+ palmOpen=false;
+ hand=null;
+ firePower=0;
+
+ scanBtn.textContent="✋ Включить сканирование";
+ scanBtn.classList.remove("active");
+ scanBtn.disabled=false;
+
+ setStatus("Сканирование выключено");
+}
+
+async function startScanning(){
+ if(loading)return;
+
+ loading=true;
+ scanBtn.disabled=true;
+ scanBtn.textContent="⏳ Загрузка...";
+ clearError();
+
+ try{
+  if(!detector){
+   detector=await createDetector();
+  }
+
+  scanning=true;
+  lastFrame=-1;
+  lastSeen=0;
+
+  scanBtn.textContent="⏹ Выключить сканирование";
+  scanBtn.classList.add("active");
+
+  setStatus("✋ Покажи ладонь");
+ }catch(e){
+  scanning=false;
+
+  showError(
+   "Не удалось загрузить распознавание.\n"+
+   (e.message||String(e))
+  );
+
+  setStatus("Ошибка сканирования");
+  scanBtn.textContent="↻ Повторить сканирование";
+ }finally{
+  loading=false;
+  scanBtn.disabled=false;
+ }
+}
+
+scanBtn.onclick=()=>{
+ if(loading)return;
+
+ if(scanning){
+  stopScanning();
+ }else{
+  startScanning();
+ }
+};
+
+startBtn.onclick=async()=>{
+ startBtn.disabled=true;
  $("error").textContent="";
 
  try{
   if(!navigator.mediaDevices?.getUserMedia){
-   throw Error("Нужен HTTPS и доступ к камере");
+   throw Error(
+    "Камера недоступна. Открой сайт по HTTPS."
+   );
   }
 
   await openCamera();
-  overlay.classList.add("hidden");
+
+  $("overlay").style.display="none";
+
+  scanBtn.disabled=false;
   switchBtn.disabled=false;
 
   if(!running){
@@ -452,31 +625,35 @@ start.onclick=async()=>{
    requestAnimationFrame(render);
   }
 
-  try{
-   detector=await loadModel();
-   detail.classList.add("hidden");
-   report("Покажи ладонь");
-  }catch(e){
-   report("Ошибка загрузки модели",e);
-  }
-
+  setStatus("Камера работает");
  }catch(e){
   $("error").textContent=
-   "Ошибка камеры: "+e.message;
-  report("Камера недоступна",e);
+   "Ошибка: "+(e.message||String(e));
  }finally{
-  start.disabled=false;
+  startBtn.disabled=false;
  }
 };
 
 switchBtn.onclick=async()=>{
  switchBtn.disabled=true;
- facing=facing==="user"?"environment":"user";
+
+ const previous=facing;
+ facing=facing==="user"?
+  "environment":"user";
 
  try{
   await openCamera();
+  setStatus(
+   scanning?
+   "✋ Покажи ладонь":
+   "Камера работает"
+  );
  }catch(e){
-  report("Ошибка смены камеры",e);
+  facing=previous;
+  showError(
+   "Ошибка камеры: "+
+   (e.message||String(e))
+  );
  }
 
  switchBtn.disabled=false;
