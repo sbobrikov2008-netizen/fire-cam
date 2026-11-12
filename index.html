@@ -5,13 +5,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="theme-color" content="#000000">
-<title>Fire Cam 0.7</title>
+<title>Fire Cam 0.8</title>
 <style>
 *{box-sizing:border-box}
 html,body{
  margin:0;width:100%;height:100%;
- overflow:hidden;background:#000;
- color:#fff;font-family:-apple-system,BlinkMacSystemFont,Arial
+ overflow:hidden;background:#000;color:white;
+ font-family:-apple-system,BlinkMacSystemFont,Arial,sans-serif
 }
 video{display:none}
 canvas{
@@ -29,15 +29,15 @@ canvas{
 }
 .top{
  display:flex;justify-content:space-between;
- align-items:flex-start;gap:12px
+ align-items:flex-start;gap:10px
 }
 .brand{
  font-size:23px;font-weight:900;
- text-shadow:0 2px 8px #000
+ text-shadow:0 2px 8px black
 }
 #status{
- max-width:55%;padding:12px;
- background:#111c;border-radius:18px;
+ max-width:58%;padding:12px;
+ background:#111d;border-radius:18px;
  font-size:13px;text-align:center
 }
 .controls{
@@ -46,34 +46,33 @@ canvas{
 button{
  pointer-events:auto;width:100%;
  padding:18px 12px;border:0;
- border-radius:18px;
- font-size:17px;font-weight:800;
- background:#ff792e;color:#180b03
+ border-radius:18px;font-size:17px;
+ font-weight:800;background:#ff792e;
+ color:#190b03
 }
 button.secondary{
- background:#ffffff38;color:#fff;
+ background:#ffffff38;color:white;
  backdrop-filter:blur(12px);
  -webkit-backdrop-filter:blur(12px)
 }
-button:disabled{opacity:.55}
+button:disabled{opacity:.5}
 .hint{
  text-align:center;font-size:13px;
- line-height:1.5;text-shadow:0 2px 8px #000;
- margin-bottom:4px
+ line-height:1.5;text-shadow:0 2px 8px black
 }
 #debug{
  display:none;background:#171717e8;
- padding:12px;border-radius:12px;
+ border-radius:12px;padding:12px;
  font-size:12px;white-space:pre-wrap;
- overflow-wrap:anywhere;max-height:140px;
+ overflow-wrap:anywhere;max-height:150px;
  overflow:auto;pointer-events:auto
 }
 #debug.show{display:block}
 #overlay{
  position:fixed;inset:0;z-index:10;
- background:radial-gradient(#492316,#090909 75%);
  display:flex;align-items:center;
  justify-content:center;text-align:center;
+ background:radial-gradient(#492316,#090909 75%);
  padding:25px
 }
 .panel{width:100%;max-width:360px}
@@ -97,7 +96,7 @@ button:disabled{opacity:.55}
   <div id="debug"></div>
   <div class="hint">
    Раскрой ладонь — появится огонь.<br>
-   Сожми кулак — огонь погаснет.
+   Разверни руку — огонь выстрелит.
   </div>
   <button id="scan" disabled>
    ✋ Включить сканирование
@@ -111,7 +110,7 @@ button:disabled{opacity:.55}
 <div id="overlay">
  <div class="panel">
   <h1>🔥 FIRE CAM</h1>
-  <p>Магический огонь, парящий над ладонью</p>
+  <p>Создай огонь в своей ладони</p>
   <button id="start">Включить камеру</button>
   <p id="error"></p>
  </div>
@@ -150,17 +149,26 @@ let lastVideoTime=-1;
 let lastDetection=0;
 let lastTick=0;
 
+let shot=null;
+let shotArmed=true;
+let turnStarted=0;
+let lastOrientation="unknown";
+
 const fireCanvas=document.createElement("canvas");
 const fc=fireCanvas.getContext("2d");
 
-const maskCanvas=document.createElement("canvas");
-const mc=maskCanvas.getContext("2d");
-
-function lerp(a,b,t){return a+(b-a)*t}
+function lerp(a,b,t){
+ return a+(b-a)*t;
+}
 function dist(a,b){
  return Math.hypot(a.x-b.x,a.y-b.y);
 }
-function setStatus(s){status.textContent=s}
+function clamp(x,a,b){
+ return Math.max(a,Math.min(b,x));
+}
+function setStatus(s){
+ status.textContent=s;
+}
 function error(s){
  debug.textContent=s;
  debug.classList.add("show");
@@ -176,8 +184,8 @@ function resize(){
  const d=Math.min(devicePixelRatio||1,1.5);
  W=canvas.width=Math.round(innerWidth*d);
  H=canvas.height=Math.round(innerHeight*d);
- fireCanvas.width=maskCanvas.width=W;
- fireCanvas.height=maskCanvas.height=H;
+ fireCanvas.width=W;
+ fireCanvas.height=H;
  scale=Math.max(
   W/video.videoWidth,
   H/video.videoHeight
@@ -211,40 +219,43 @@ function point(p){
  };
 }
 
-// Determine which side of the hand faces the camera.
-// MediaPipe landmarks 5, 17 and 0 define palm orientation.
-function getBackFacing(raw){
+// Palm/back orientation using the hand plane.
+function orientation(raw){
  const a=raw[5],b=raw[17],c=raw[0];
  const ux=b.x-a.x,uy=b.y-a.y;
  const vx=c.x-a.x,vy=c.y-a.y;
- const nz=ux*vy-uy*vx;
+ const cross=ux*vy-uy*vx;
 
- // Sign corrected for the two camera orientations.
- return facing==="user"?nz<0:nz>0;
+ // Camera-facing sign may require calibration.
+ const back=facing==="user"?cross<0:cross>0;
+ const strength=Math.abs(cross);
+
+ if(strength<0.012)return "side";
+ return back?"back":"front";
 }
 
 function updateHand(result,time){
  const raw=result?.landmarks?.[0];
 
  if(!raw){
-  if(time-lastSeen>280){
+  if(time-lastSeen>300){
    palmOpen=false;
    hand=null;
+   turnStarted=0;
   }
   return;
  }
 
  lastSeen=time;
  const p=raw.map(point);
+ const span=dist(p[5],p[17]);
 
  const center={
   x:(p[0].x+p[5].x+p[9].x+p[17].x)/4,
   y:(p[0].y+p[5].y+p[9].y+p[17].y)/4
  };
 
- const span=dist(p[5],p[17]);
  let extended=0;
-
  for(const [tip,joint] of [
   [8,6],[12,10],[16,14],[20,18]
  ]){
@@ -253,19 +264,22 @@ function updateHand(result,time){
    extended++;
   }
  }
-
  palmOpen=extended>=3;
 
- const backFacing=getBackFacing(raw);
+ const side=orientation(raw);
 
- // The ball stays near the middle of the palm.
+ // Move the ball above the hand, toward the fingers.
+ const dirX=p[9].x-p[0].x;
+ const dirY=p[9].y-p[0].y;
+ const len=Math.hypot(dirX,dirY)||1;
+ const ux=dirX/len,uy=dirY/len;
+
  const target={
-  x:center.x+(p[9].x-p[0].x)*.22,
-  y:center.y+(p[9].y-p[0].y)*.22,
-  r:Math.max(16,Math.min(W*.23,span*.66)),
-  points:p,
-  span,
-  backFacing
+  x:center.x+ux*span*.28,
+  y:center.y+uy*span*.28,
+  r:clamp(span*.72,22,W*.19),
+  side,
+  span
  };
 
  if(!hand){
@@ -274,133 +288,174 @@ function updateHand(result,time){
   hand.x=lerp(hand.x,target.x,.32);
   hand.y=lerp(hand.y,target.y,.32);
   hand.r=lerp(hand.r,target.r,.25);
-  hand.points=p;
   hand.span=span;
-  hand.backFacing=backFacing;
+  hand.side=side;
+ }
+
+ handleGesture(time);
+}
+
+function handleGesture(time){
+ if(!hand||!palmOpen){
+  turnStarted=0;
+  lastOrientation="unknown";
+  return;
+ }
+
+ if(hand.side==="front"){
+  shotArmed=true;
+  turnStarted=0;
+  lastOrientation="front";
+ }else if(hand.side==="side"){
+  turnStarted=0;
+  lastOrientation="side";
+ }else if(hand.side==="back"){
+  if(shotArmed){
+   if(!turnStarted)turnStarted=time;
+   if(time-turnStarted>180){
+    shoot(time);
+    shotArmed=false;
+    turnStarted=0;
+   }
+  }
+  lastOrientation="back";
  }
 }
 
-// Soft, animated fireball.
-function drawFire(x,y,r,t){
- fc.clearRect(0,0,W,H);
- fc.save();
+function shoot(time){
+ if(!hand)return;
 
- const glow=fc.createRadialGradient(
+ shot={
+  x:hand.x,
+  y:hand.y,
+  r:hand.r,
+  start:time,
+  duration:950
+ };
+ setStatus("🔥 Огненный выстрел!");
+}
+
+// Fireball with animated flame tongues.
+function drawFireball(c,x,y,r,t,alpha=1){
+ if(r<=0||alpha<=0)return;
+
+ c.save();
+ c.globalAlpha=alpha;
+ c.globalCompositeOperation="screen";
+
+ const glow=c.createRadialGradient(
   x,y,0,x,y,r*2.1
  );
- glow.addColorStop(0,"rgba(255,210,90,.75)");
- glow.addColorStop(.25,"rgba(255,115,10,.48)");
- glow.addColorStop(.65,"rgba(255,50,0,.12)");
- glow.addColorStop(1,"rgba(255,30,0,0)");
+ glow.addColorStop(0,"rgba(255,150,20,.42)");
+ glow.addColorStop(.35,"rgba(255,95,0,.22)");
+ glow.addColorStop(1,"rgba(255,40,0,0)");
 
- fc.fillStyle=glow;
- fc.beginPath();
- fc.arc(x,y,r*2.1,0,Math.PI*2);
- fc.fill();
+ c.fillStyle=glow;
+ c.beginPath();
+ c.arc(x,y,r*2.1,0,Math.PI*2);
+ c.fill();
 
- for(let i=0;i<55;i++){
-  const phase=(i*.6180339+t*(.3+i%4*.03))%1;
-  const a=i*2.39996+t*.35;
-  const px=x+Math.cos(a)*r*.8*phase;
-  const py=y+Math.sin(a)*r*.35-phase*r*.8;
-  const size=r*(.08+.2*(1-phase));
+ // Irregular animated flame boundary.
+ for(let layer=0;layer<3;layer++){
+  c.beginPath();
+  const count=64;
+  for(let i=0;i<=count;i++){
+   const a=i/count*Math.PI*2;
+   const wave=
+    Math.sin(a*7-t*5+layer)*.12+
+    Math.sin(a*13+t*7+layer*2)*.07;
+   const flame=
+    Math.max(0,-Math.sin(a))*
+    (.12+.1*Math.sin(t*6+a*9));
+   const radius=r*(
+    1.02+wave+flame+layer*.08
+   );
+   const px=x+Math.cos(a)*radius;
+   const py=y+Math.sin(a)*radius;
+   if(i===0)c.moveTo(px,py);
+   else c.lineTo(px,py);
+  }
+  c.closePath();
 
-  const g=fc.createRadialGradient(
-   px,py,0,px,py,size*2
+  const g=c.createRadialGradient(
+   x,y,r*.08,x,y,r*1.5
   );
-  g.addColorStop(0,"rgba(255,245,180,.8)");
-  g.addColorStop(.35,"rgba(255,140,15,.65)");
-  g.addColorStop(1,"rgba(255,45,0,0)");
-
-  fc.fillStyle=g;
-  fc.beginPath();
-  fc.arc(px,py,size*2,0,Math.PI*2);
-  fc.fill();
+  g.addColorStop(0,"rgba(255,210,80,.95)");
+  g.addColorStop(.38,"rgba(255,115,0,.8)");
+  g.addColorStop(.75,"rgba(255,50,0,.35)");
+  g.addColorStop(1,"rgba(255,30,0,0)");
+  c.fillStyle=g;
+  c.globalAlpha=alpha*(.8-layer*.18);
+  c.fill();
  }
 
- const core=fc.createRadialGradient(
-  x-r*.18,y-r*.18,0,x,y,r
+ c.globalAlpha=alpha;
+
+ const core=c.createRadialGradient(
+  x-r*.16,y-r*.18,r*.04,
+  x,y,r*.94
  );
- core.addColorStop(0,"#fffde8");
- core.addColorStop(.25,"#ffe58b");
- core.addColorStop(.6,"#ff941b");
- core.addColorStop(1,"rgba(255,60,0,0)");
+ core.addColorStop(0,"rgba(255,250,185,.95)");
+ core.addColorStop(.25,"rgba(255,204,65,.95)");
+ core.addColorStop(.65,"rgba(255,115,0,.85)");
+ core.addColorStop(1,"rgba(255,50,0,0)");
 
- fc.fillStyle=core;
- fc.beginPath();
- fc.arc(
-  x,y,r*(1+.035*Math.sin(t*9)),
-  0,Math.PI*2
- );
- fc.fill();
+ c.fillStyle=core;
+ c.beginPath();
+ c.arc(x,y,r*.94,0,Math.PI*2);
+ c.fill();
 
- fc.restore();
-}
+ // Small drifting embers, not a ring of dots.
+ for(let i=0;i<18;i++){
+  const phase=(i*.618+t*(.3+i%4*.04))%1;
+  const angle=i*2.399;
+  const px=x+Math.cos(angle)*r*.85+
+   Math.sin(t*2+i)*r*.1;
+  const py=y-r*(.25+phase*1.6);
+  const size=r*(.012+.035*(1-phase));
 
-// Create an opaque hand silhouette.
-// No semi-transparent polygon is drawn on the video.
-function makeMask(p,span){
- mc.clearRect(0,0,W,H);
- mc.fillStyle="#fff";
- mc.strokeStyle="#fff";
- mc.lineCap="round";
- mc.lineJoin="round";
+  c.globalAlpha=alpha*(1-phase)*.65;
+  c.fillStyle=i%3===0?"#ffe39a":"#ff751b";
+  c.beginPath();
+  c.arc(px,py,size,0,Math.PI*2);
+  c.fill();
+ }
 
- // Palm silhouette
- mc.beginPath();
- const outline=[0,1,2,5,9,13,17];
- outline.forEach((id,i)=>{
-  if(i===0)mc.moveTo(p[id].x,p[id].y);
-  else mc.lineTo(p[id].x,p[id].y);
- });
- mc.closePath();
- mc.fill();
-
- mc.lineWidth=span*.27;
- mc.stroke();
-
- // Finger silhouettes
- const fingers=[
-  [1,2,3,4],
-  [5,6,7,8],
-  [9,10,11,12],
-  [13,14,15,16],
-  [17,18,19,20]
- ];
-
- fingers.forEach((chain,i)=>{
-  mc.beginPath();
-  mc.lineWidth=span*(i===0?.27:.18);
-  chain.forEach((id,j)=>{
-   if(j===0)mc.moveTo(p[id].x,p[id].y);
-   else mc.lineTo(p[id].x,p[id].y);
-  });
-  mc.stroke();
- });
+ c.restore();
 }
 
 function renderFire(time){
  if(!hand||firePower<.015)return;
 
- const x=hand.x,y=hand.y;
+ const t=time/1000;
+ const bob=Math.sin(t*3.1)*hand.r*.07;
+ const x=hand.x;
+ const y=hand.y+bob;
  const r=hand.r*firePower;
 
- drawFire(x,y,r,time/1000);
+ // Keep the sphere round when the hand turns sideways.
+ drawFireball(ctx,x,y,r,t,firePower);
+}
 
- if(hand.backFacing){
-  // Remove fire pixels wherever the hand is.
-  makeMask(hand.points,hand.span);
+function renderShot(time){
+ if(!shot)return;
 
-  fc.save();
-  fc.globalCompositeOperation="destination-out";
-  fc.drawImage(maskCanvas,0,0);
-  fc.restore();
+ const progress=(time-shot.start)/shot.duration;
+ if(progress>=1){
+  shot=null;
+  return;
  }
 
- ctx.save();
- ctx.globalAlpha=Math.min(1,firePower);
- ctx.drawImage(fireCanvas,0,0);
- ctx.restore();
+ const p=clamp(progress,0,1);
+ const eased=1-Math.pow(1-p,2.2);
+
+ // Simulated movement away from the camera.
+ const x=shot.x;
+ const y=shot.y-shot.r*.45*eased;
+ const r=shot.r*(1-.83*eased);
+ const alpha=Math.pow(1-p,.65);
+
+ drawFireball(ctx,x,y,r,time/1000,alpha);
 }
 
 function render(time){
@@ -424,10 +479,15 @@ function render(time){
 
     if(!result.landmarks?.length){
      setStatus("✋ Покажи руку");
-    }else if(palmOpen){
-     setStatus("🔥 Ладонь открыта");
-    }else{
+    }else if(!palmOpen){
      setStatus("✊ Раскрой ладонь");
+    }else if(hand?.side==="back"){
+     setStatus(shotArmed?
+      "🔥 Разворот руки":"🔥 Выстрел выполнен");
+    }else if(hand?.side==="side"){
+     setStatus("🔥 Ладонь сбоку");
+    }else{
+     setStatus("🔥 Ладонь открыта");
     }
    }catch(e){
     error("Ошибка распознавания: "+e.message);
@@ -439,14 +499,19 @@ function render(time){
    if(time-lastSeen>350)palmOpen=false;
 
    const dt=Math.min(50,time-(lastTick||time));
-   const smoothing=1-Math.exp(-dt/110);
+   const smooth=1-Math.exp(-dt/120);
+
+   const visible=
+    hand&&palmOpen&&shotArmed;
 
    firePower=lerp(
     firePower,
-    hand&&palmOpen?1:0,
-    smoothing
+    visible?1:0,
+    smooth
    );
+
    renderFire(time);
+   renderShot(time);
   }else{
    firePower=0;
   }
@@ -470,6 +535,7 @@ async function openCamera(){
    height:{ideal:720}
   }
  });
+
  stream=s;
  video.srcObject=s;
  await video.play();
@@ -486,6 +552,9 @@ async function openCamera(){
  hand=null;
  palmOpen=false;
  firePower=0;
+ shot=null;
+ shotArmed=true;
+ turnStarted=0;
  lastVideoTime=-1;
  lastSeen=0;
 }
@@ -525,6 +594,7 @@ async function createDetector(){
    errors.push(base+": "+e.message);
   }
  }
+
  throw Error(errors.join("\n"));
 }
 
@@ -533,6 +603,9 @@ function stopScanning(){
  palmOpen=false;
  hand=null;
  firePower=0;
+ shot=null;
+ shotArmed=true;
+ turnStarted=0;
  scanBtn.textContent="✋ Включить сканирование";
  setStatus("Сканирование выключено");
 }
@@ -549,6 +622,7 @@ async function startScanning(){
    detector=await createDetector();
   }
   scanning=true;
+  shotArmed=true;
   lastSeen=0;
   lastVideoTime=-1;
   scanBtn.textContent="⏹ Выключить сканирование";
@@ -604,7 +678,8 @@ switchBtn.onclick=async()=>{
 
  try{
   await openCamera();
-  setStatus(scanning?"✋ Покажи ладонь":"Камера работает");
+  setStatus(scanning?
+   "✋ Покажи ладонь":"Камера работает");
  }catch(e){
   facing=previous;
   error("Ошибка камеры: "+e.message);
