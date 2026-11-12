@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport"
 content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Fire Cam 0.5</title>
+<title>Fire Cam 0.6</title>
 <style>
 *{box-sizing:border-box}
 html,body{
@@ -99,8 +99,8 @@ button.active{
  <div class="controls">
   <div id="debug"></div>
   <div class="hint">
-   Открой ладонь — огонь появится.
-   Сожми кулак — погаснет.
+   Раскрой ладонь — появится огонь.
+   Сожми кулак — огонь погаснет.
   </div>
   <button id="scan" class="secondary" disabled>
    ✋ Включить сканирование
@@ -114,7 +114,7 @@ button.active{
 <div id="overlay">
  <div class="panel">
   <h1>🔥 Fire Cam</h1>
-  <p>Магический огонь в твоей ладони</p>
+  <p>Магический огонь над ладонью</p>
   <button id="start">Включить камеру</button>
   <p id="error"></p>
  </div>
@@ -144,6 +144,7 @@ let firePower=0;
 let lastSeen=0;
 let lastFrame=-1;
 let lastDetection=0;
+let lastRender=0;
 
 let W=0,H=0;
 let scale=1,dx=0,dy=0;
@@ -157,48 +158,55 @@ const CDN=[
 const MODEL=
  "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
 
+// Отдельные холсты для огня и перекрытия
+const fireCanvas=document.createElement("canvas");
+const fireCtx=fireCanvas.getContext("2d");
+const maskCanvas=document.createElement("canvas");
+const maskCtx=maskCanvas.getContext("2d");
+
 function setStatus(message){
  status.textContent=message;
 }
-
 function showError(message){
  debug.textContent=message;
  debug.classList.add("show");
  console.error(message);
 }
-
 function clearError(){
  debug.textContent="";
  debug.classList.remove("show");
 }
+function lerp(a,b,t){
+ return a+(b-a)*t;
+}
+function distance(a,b){
+ return Math.hypot(a.x-b.x,a.y-b.y);
+}
 
 function resize(){
  if(!video.videoWidth)return;
-
  const d=Math.min(devicePixelRatio||1,1.5);
  W=canvas.width=Math.round(innerWidth*d);
  H=canvas.height=Math.round(innerHeight*d);
+ fireCanvas.width=maskCanvas.width=W;
+ fireCanvas.height=maskCanvas.height=H;
 
  scale=Math.max(
   W/video.videoWidth,
   H/video.videoHeight
  );
-
  dx=(W-video.videoWidth*scale)/2;
  dy=(H-video.videoHeight*scale)/2;
 }
-
 window.addEventListener("resize",resize);
 
 function drawVideo(){
  ctx.save();
  ctx.translate(dx,dy);
-
  if(facing==="user"){
   ctx.translate(video.videoWidth*scale,0);
   ctx.scale(-1,1);
  }
-
  ctx.drawImage(
   video,0,0,
   video.videoWidth*scale,
@@ -210,17 +218,10 @@ function drawVideo(){
 function point(p){
  return {
   x:dx+(facing==="user"?1-p.x:p.x)
-    *video.videoWidth*scale,
-  y:dy+p.y*video.videoHeight*scale
+   *video.videoWidth*scale,
+  y:dy+p.y*video.videoHeight*scale,
+  z:p.z||0
  };
-}
-
-function distance(a,b){
- return Math.hypot(a.x-b.x,a.y-b.y);
-}
-
-function lerp(a,b,t){
- return a+(b-a)*t;
 }
 
 function updateHand(result,time){
@@ -229,6 +230,7 @@ function updateHand(result,time){
  if(!landmarks){
   if(time-lastSeen>250){
    palmOpen=false;
+   hand=null;
   }
   return;
  }
@@ -236,36 +238,41 @@ function updateHand(result,time){
  lastSeen=time;
  const p=landmarks.map(point);
 
- // Центр ладони
  const palm={
   x:(p[0].x+p[5].x+p[9].x+p[17].x)/4,
   y:(p[0].y+p[5].y+p[9].y+p[17].y)/4
  };
-
  const span=distance(p[5],p[17]);
 
- // Распознавание раскрытых пальцев
  let extended=0;
-
- const fingers=[
+ for(const [tip,joint] of [
   [8,6],[12,10],[16,14],[20,18]
- ];
-
- for(const [tip,joint] of fingers){
+ ]){
   if(distance(p[tip],p[0])>
      distance(p[joint],p[0])*1.13){
    extended++;
   }
  }
-
  palmOpen=extended>=3;
 
- // Огненный шар в области ладони
+ // Нормаль плоскости ладони по 3D-ориентирам
+ const a=landmarks[5],b=landmarks[17],c=landmarks[0];
+ const ux=b.x-a.x,uy=b.y-a.y,uz=b.z-a.z;
+ const vx=c.x-a.x,vy=c.y-a.y,vz=c.z-a.z;
+ const nz=ux*vy-uy*vx;
+
+ // Поворот определяется относительно камеры
+ // Знак зависит от ориентации и зеркалирования
+ const backFacing=
+  facing==="user"?nz>0:nz<0;
+
  const target={
   x:palm.x+(p[9].x-p[0].x)*.25,
   y:palm.y+(p[9].y-p[0].y)*.25,
   r:Math.max(18,Math.min(W*.25,span*.75)),
-  points:p
+  points:p,
+  backFacing,
+  span
  };
 
  if(!hand){
@@ -275,85 +282,128 @@ function updateHand(result,time){
   hand.y=lerp(hand.y,target.y,.3);
   hand.r=lerp(hand.r,target.r,.25);
   hand.points=p;
+  hand.backFacing=target.backFacing;
+  hand.span=span;
  }
 }
 
+// Рисуем огонь на отдельном холсте
 function drawFire(x,y,r,t){
- ctx.save();
- ctx.globalCompositeOperation="screen";
+ const c=fireCtx;
+ c.save();
+ c.globalCompositeOperation="screen";
 
- // Большое мягкое свечение
- const glow=ctx.createRadialGradient(
-  x,y,0,x,y,r*2.6
- );
+ const glow=c.createRadialGradient(x,y,0,x,y,r*2.6);
  glow.addColorStop(0,"rgba(255,220,110,.65)");
  glow.addColorStop(.25,"rgba(255,120,15,.4)");
  glow.addColorStop(.6,"rgba(255,45,0,.13)");
  glow.addColorStop(1,"rgba(255,30,0,0)");
+ c.fillStyle=glow;
+ c.beginPath();
+ c.arc(x,y,r*2.6,0,Math.PI*2);
+ c.fill();
 
- ctx.fillStyle=glow;
- ctx.beginPath();
- ctx.arc(x,y,r*2.6,0,Math.PI*2);
- ctx.fill();
-
- // Движущиеся языки пламени
  for(let i=0;i<65;i++){
   const phase=(i*.618+t*(.35+i%5*.025))%1;
   const angle=i*2.399+t*.45;
-
   const px=x+Math.cos(angle)*r*phase*.8;
-  const py=y+Math.sin(angle)*r*phase*.5
-       -phase*r*.7;
-
+  const py=y+Math.sin(angle)*r*phase*.5-phase*r*.7;
   const size=r*(.12+.22*(1-phase));
 
-  const g=ctx.createRadialGradient(
-   px,py,0,px,py,size*2
-  );
-
+  const g=c.createRadialGradient(px,py,0,px,py,size*2);
   g.addColorStop(0,"rgba(255,245,185,.85)");
   g.addColorStop(.35,"rgba(255,150,25,.7)");
   g.addColorStop(1,"rgba(255,45,0,0)");
 
-  ctx.fillStyle=g;
-  ctx.beginPath();
-  ctx.arc(px,py,size*2,0,Math.PI*2);
-  ctx.fill();
+  c.fillStyle=g;
+  c.beginPath();
+  c.arc(px,py,size*2,0,Math.PI*2);
+  c.fill();
  }
 
- // Светящееся ядро
- const core=ctx.createRadialGradient(
+ const core=c.createRadialGradient(
   x-r*.2,y-r*.2,0,x,y,r
  );
-
  core.addColorStop(0,"#fffde9");
  core.addColorStop(.2,"#ffe88d");
  core.addColorStop(.55,"#ff981e");
  core.addColorStop(1,"rgba(255,50,0,0)");
 
- ctx.fillStyle=core;
- ctx.beginPath();
- ctx.arc(
-  x,y,r*(1+.04*Math.sin(t*8)),
-  0,Math.PI*2
- );
- ctx.fill();
+ c.fillStyle=core;
+ c.beginPath();
+ c.arc(x,y,r*(1+.04*Math.sin(t*8)),0,Math.PI*2);
+ c.fill();
+ c.restore();
+}
 
- // Искры
- for(let i=0;i<28;i++){
-  const q=(i*.37+t*(.3+i%4*.05))%1;
-  const a=i*2.4;
+// Создаём маску кисти по точкам MediaPipe
+function drawHandMask(p,span){
+ const c=maskCtx;
+ c.clearRect(0,0,W,H);
+ c.fillStyle="white";
+ c.strokeStyle="white";
+ c.lineCap="round";
+ c.lineJoin="round";
 
-  const sx=x+Math.sin(a)*r*(.2+q);
-  const sy=y-r*(.2+q*1.5);
+ // Основная область ладони
+ c.beginPath();
+ const outline=[0,1,2,5,9,13,17];
+ outline.forEach((id,i)=>{
+  if(i===0)c.moveTo(p[id].x,p[id].y);
+  else c.lineTo(p[id].x,p[id].y);
+ });
+ c.closePath();
+ c.fill();
 
-  ctx.globalAlpha=(1-q)*.8;
-  ctx.fillStyle=i%3?"#ffac40":"#fff1bb";
-  ctx.beginPath();
-  ctx.arc(sx,sy,Math.max(1,r*.025),0,Math.PI*2);
-  ctx.fill();
+ // Добавляем толщину ладони
+ c.lineWidth=span*.28;
+ c.stroke();
+
+ // Отдельные пальцы
+ const fingers=[
+  [1,2,3,4],
+  [5,6,7,8],
+  [9,10,11,12],
+  [13,14,15,16],
+  [17,18,19,20]
+ ];
+
+ fingers.forEach((chain,i)=>{
+  c.beginPath();
+  c.lineWidth=span*(i===0?.27:.19);
+  chain.forEach((id,j)=>{
+   if(j===0)c.moveTo(p[id].x,p[id].y);
+   else c.lineTo(p[id].x,p[id].y);
+  });
+  c.stroke();
+ });
+
+ // Слегка смягчаем границы при наложении
+}
+
+// Перекрытие огня рукой
+function renderFire(time){
+ if(!hand||firePower<.015)return;
+
+ fireCtx.clearRect(0,0,W,H);
+ fireCtx.globalCompositeOperation="source-over";
+ fireCtx.globalAlpha=1;
+
+ const r=hand.r*firePower;
+ drawFire(hand.x,hand.y,r,time/1000);
+
+ if(hand.backFacing){
+  // Вырезаем из огня форму кисти
+  drawHandMask(hand.points,hand.span);
+
+  fireCtx.globalCompositeOperation="destination-out";
+  fireCtx.drawImage(maskCanvas,0,0);
+  fireCtx.globalCompositeOperation="source-over";
  }
 
+ ctx.save();
+ ctx.globalAlpha=Math.min(1,firePower);
+ ctx.drawImage(fireCanvas,0,0);
  ctx.restore();
 }
 
@@ -372,10 +422,7 @@ function render(time){
    lastDetection=time;
 
    try{
-    const result=detector.detectForVideo(
-     video,time
-    );
-
+    const result=detector.detectForVideo(video,time);
     updateHand(result,time);
 
     if(result.landmarks?.length){
@@ -388,30 +435,19 @@ function render(time){
      setStatus("✋ Покажи ладонь");
     }
    }catch(e){
-    showError(
-     "Ошибка распознавания:\n"+
-     (e.message||String(e))
-    );
+    showError("Ошибка распознавания:\n"+e.message);
     stopScanning();
    }
   }
 
   if(scanning){
    if(time-lastSeen>350)palmOpen=false;
-
-   const target=hand&&palmOpen?1:0;
-   firePower=lerp(firePower,target,.12);
-
-   if(hand&&firePower>.01){
-    ctx.save();
-    ctx.globalAlpha=Math.min(1,firePower);
-    drawFire(
-     hand.x,hand.y,
-     hand.r*firePower,
-     time/1000
-    );
-    ctx.restore();
-   }
+   firePower=lerp(
+    firePower,
+    hand&&palmOpen?1:0,
+    .12
+   );
+   renderFire(time);
   }else{
    firePower=0;
   }
@@ -421,17 +457,10 @@ function render(time){
 }
 
 async function openCamera(){
- const oldStream=stream;
-
- // Запрашиваем новую камеру
- // Если старая мешает, освобождаем её
- if(oldStream){
-  oldStream.getTracks().forEach(t=>t.stop());
+ if(stream){
+  stream.getTracks().forEach(t=>t.stop());
  }
-
- stream=null;
-
- const s=await navigator.mediaDevices.getUserMedia({
+ stream=await navigator.mediaDevices.getUserMedia({
   audio:false,
   video:{
    facingMode:{ideal:facing},
@@ -439,27 +468,16 @@ async function openCamera(){
    height:{ideal:720}
   }
  });
-
- stream=s;
- video.srcObject=s;
+ video.srcObject=stream;
  await video.play();
 
  if(!video.videoWidth){
-  await new Promise((resolve,reject)=>{
-   const timer=setTimeout(
-    ()=>reject(Error("Нет видеокадров")),5000
-   );
+  await new Promise(resolve=>{
    video.addEventListener(
-    "loadedmetadata",
-    ()=>{
-     clearTimeout(timer);
-     resolve();
-    },
-    {once:true}
+    "loadedmetadata",resolve,{once:true}
    );
   });
  }
-
  resize();
  hand=null;
  palmOpen=false;
@@ -468,77 +486,48 @@ async function openCamera(){
  lastSeen=0;
 }
 
-// Проверяем доступность модели отдельно
-async function getModel(){
- const response=await fetch(MODEL);
-
- if(!response.ok){
-  throw Error(
-   "Модель: HTTP "+response.status
-  );
- }
-
- const data=await response.arrayBuffer();
-
- if(data.byteLength<10000){
-  throw Error("Файл модели повреждён");
- }
-
- return new Uint8Array(data);
-}
-
 async function createDetector(){
+ const response=await fetch(MODEL);
+ if(!response.ok){
+  throw Error("Модель: HTTP "+response.status);
+ }
+ const bytes=new Uint8Array(
+  await response.arrayBuffer()
+ );
  const errors=[];
-
- // Сначала загружаем модель
- setStatus("Загрузка модели...");
- const modelBytes=await getModel();
 
  for(const base of CDN){
   try{
    setStatus("Загрузка MediaPipe...");
-
-   const mod=await import(
-    base+"/vision_bundle.mjs"
+   const mod=await import(base+"/vision_bundle.mjs");
+   const vision=await mod.FilesetResolver.forVisionTasks(
+    base+"/wasm"
    );
 
-   const vision=await mod.FilesetResolver
-    .forVisionTasks(base+"/wasm");
-
-   // Сначала GPU, затем CPU
    for(const delegate of ["GPU","CPU"]){
     try{
      setStatus("Запуск "+delegate+"...");
-
-     const instance=
-      await mod.HandLandmarker.createFromOptions(
-       vision,{
-        baseOptions:{
-         modelAssetBuffer:modelBytes.slice(),
-         delegate
-        },
-        runningMode:"VIDEO",
-        numHands:1,
-        minHandDetectionConfidence:.55,
-        minHandPresenceConfidence:.55,
-        minTrackingConfidence:.5
-       }
-      );
-
-     return instance;
-    }catch(e){
-     errors.push(
-      delegate+": "+(e.message||String(e))
+     return await mod.HandLandmarker.createFromOptions(
+      vision,{
+       baseOptions:{
+        modelAssetBuffer:bytes.slice(),
+        delegate
+       },
+       runningMode:"VIDEO",
+       numHands:1,
+       minHandDetectionConfidence:.55,
+       minHandPresenceConfidence:.55,
+       minTrackingConfidence:.5
+      }
      );
+    }catch(e){
+     errors.push(delegate+": "+e.message);
     }
    }
   }catch(e){
-   errors.push(
-    base+": "+(e.message||String(e))
-   );
+   errors.push(base+": "+e.message);
   }
  }
-
  throw Error(errors.join("\n"));
 }
 
@@ -547,43 +536,33 @@ function stopScanning(){
  palmOpen=false;
  hand=null;
  firePower=0;
-
  scanBtn.textContent="✋ Включить сканирование";
  scanBtn.classList.remove("active");
  scanBtn.disabled=false;
-
  setStatus("Сканирование выключено");
 }
 
 async function startScanning(){
  if(loading)return;
-
  loading=true;
  scanBtn.disabled=true;
  scanBtn.textContent="⏳ Загрузка...";
  clearError();
 
  try{
-  if(!detector){
-   detector=await createDetector();
-  }
-
+  if(!detector)detector=await createDetector();
   scanning=true;
   lastFrame=-1;
   lastSeen=0;
-
   scanBtn.textContent="⏹ Выключить сканирование";
   scanBtn.classList.add("active");
-
   setStatus("✋ Покажи ладонь");
  }catch(e){
   scanning=false;
-
   showError(
    "Не удалось загрузить распознавание.\n"+
    (e.message||String(e))
   );
-
   setStatus("Ошибка сканирования");
   scanBtn.textContent="↻ Повторить сканирование";
  }finally{
@@ -594,29 +573,19 @@ async function startScanning(){
 
 scanBtn.onclick=()=>{
  if(loading)return;
-
- if(scanning){
-  stopScanning();
- }else{
-  startScanning();
- }
+ if(scanning)stopScanning();
+ else startScanning();
 };
 
 startBtn.onclick=async()=>{
  startBtn.disabled=true;
  $("error").textContent="";
-
  try{
   if(!navigator.mediaDevices?.getUserMedia){
-   throw Error(
-    "Камера недоступна. Открой сайт по HTTPS."
-   );
+   throw Error("Камера недоступна. Нужен HTTPS.");
   }
-
   await openCamera();
-
   $("overlay").style.display="none";
-
   scanBtn.disabled=false;
   switchBtn.disabled=false;
 
@@ -624,11 +593,9 @@ startBtn.onclick=async()=>{
    running=true;
    requestAnimationFrame(render);
   }
-
   setStatus("Камера работает");
  }catch(e){
-  $("error").textContent=
-   "Ошибка: "+(e.message||String(e));
+  $("error").textContent="Ошибка: "+e.message;
  }finally{
   startBtn.disabled=false;
  }
@@ -636,26 +603,15 @@ startBtn.onclick=async()=>{
 
 switchBtn.onclick=async()=>{
  switchBtn.disabled=true;
-
  const previous=facing;
- facing=facing==="user"?
-  "environment":"user";
-
+ facing=facing==="user"?"environment":"user";
  try{
   await openCamera();
-  setStatus(
-   scanning?
-   "✋ Покажи ладонь":
-   "Камера работает"
-  );
+  setStatus(scanning?"✋ Покажи ладонь":"Камера работает");
  }catch(e){
   facing=previous;
-  showError(
-   "Ошибка камеры: "+
-   (e.message||String(e))
-  );
+  showError("Ошибка камеры: "+e.message);
  }
-
  switchBtn.disabled=false;
 };
 </script>
