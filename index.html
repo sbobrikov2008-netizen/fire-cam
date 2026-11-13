@@ -1,530 +1,538 @@
 
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport"
-content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<meta name="theme-color" content="#000000">
-<title>Fire Cam 0.9</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#08090c">
+<title>Ice Cam — Frost</title>
 <style>
 *{box-sizing:border-box}
 html,body{
- margin:0;width:100%;height:100%;
- overflow:hidden;background:#000;color:#fff;
- font-family:-apple-system,BlinkMacSystemFont,Arial,sans-serif
+ margin:0;width:100%;height:100%;overflow:hidden;
+ background:#08090c;color:#fff;
+ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif
 }
 video{display:none}
 canvas{
  position:fixed;inset:0;width:100%;height:100%;
- pointer-events:none
+ object-fit:cover
 }
-.ui{
- position:fixed;inset:0;
- display:flex;flex-direction:column;
- justify-content:space-between;
- padding:calc(env(safe-area-inset-top) + 18px) 16px
- calc(env(safe-area-inset-bottom) + 18px);
- pointer-events:none
-}
-.top{
+header{
+ position:fixed;top:0;left:0;right:0;
  display:flex;align-items:flex-start;
- justify-content:space-between;gap:10px
+ justify-content:space-between;gap:12px;
+ padding:calc(env(safe-area-inset-top) + 17px) 16px 0;
+ pointer-events:none
 }
 .brand{
- font-size:23px;font-weight:900;
- text-shadow:0 2px 8px #000
+ font-size:21px;font-weight:850;
+ text-shadow:0 2px 10px #000
 }
-#status{
- max-width:58%;padding:12px;
- background:#111c;border-radius:16px;
- font-size:12px;text-align:center
+.status{
+ max-width:62%;font-size:12px;line-height:1.3;
+ text-align:center;background:#111b;
+ border:1px solid #ffffff20;padding:11px 13px;
+ border-radius:15px;backdrop-filter:blur(10px)
 }
-.controls{
- display:flex;flex-direction:column;gap:11px
+.status.frozen{background:#2666dbdc}
+footer{
+ position:fixed;bottom:0;left:0;right:0;
+ padding:0 16px calc(env(safe-area-inset-bottom) + 18px);
+ display:grid;gap:10px
+}
+.hint{
+ text-align:center;text-shadow:0 2px 8px #000;
+ font-size:13px;line-height:1.4
 }
 button{
- pointer-events:auto;width:100%;
- padding:17px 12px;border:0;
- border-radius:17px;font-size:16px;
- font-weight:800;background:#ff792e;
- color:#180b03
+ width:100%;border:0;border-radius:17px;
+ padding:17px 12px;font-size:16px;
+ font-weight:750;background:#ff873b;
+ color:#1b0b04;cursor:pointer
 }
 button.secondary{
- background:#ffffff38;color:white;
- backdrop-filter:blur(12px);
- -webkit-backdrop-filter:blur(12px)
+ background:#ffffff37;color:#fff;
+ backdrop-filter:blur(12px)
 }
-button:disabled{opacity:.5}
-.hint{
- text-align:center;font-size:13px;
- line-height:1.5;text-shadow:0 2px 8px #000
-}
-#debug{
- display:none;background:#171717ed;
- padding:12px;border-radius:12px;
- font-size:12px;white-space:pre-wrap;
- overflow-wrap:anywhere;max-height:140px;
- overflow:auto;pointer-events:auto
-}
-#debug.show{display:block}
+button:disabled{opacity:.55}
 #overlay{
- position:fixed;inset:0;z-index:10;
- display:flex;align-items:center;
- justify-content:center;text-align:center;
- background:radial-gradient(#492316,#090909 75%);
- padding:25px
+ position:fixed;inset:0;
+ background:radial-gradient(circle at 50% 35%,#382317,#090a0d 70%);
+ display:flex;align-items:center;justify-content:center;
+ padding:25px;text-align:center;z-index:3
 }
-.panel{width:100%;max-width:360px}
-.panel h1{font-size:40px}
-.panel p{line-height:1.5;color:#ddd}
-#error{color:#ffb9a5;white-space:pre-wrap}
+#overlay .panel{max-width:370px;width:100%}
+h1{font-size:37px;margin:0 0 12px}
+p{color:#ddd;line-height:1.5}
+#error{color:#ffb4a4;font-size:13px;white-space:pre-wrap}
+#notice{
+ display:none;position:fixed;left:16px;right:16px;
+ top:calc(env(safe-area-inset-top) + 82px);
+ background:#711f1fe9;padding:12px;border-radius:12px;
+ font-size:12px;white-space:pre-wrap;
+ max-height:30vh;overflow:auto
+}
 </style>
 </head>
 <body>
 
 <video id="video" autoplay muted playsinline></video>
-<canvas id="scene"></canvas>
+<canvas id="screen"></canvas>
 
-<div class="ui">
- <div class="top">
-  <div class="brand">🔥 FIRE CAM</div>
-  <div id="status">Камера выключена</div>
- </div>
+<header>
+ <div class="brand">❄️ ICE CAM</div>
+ <div id="status" class="status">Камера выключена</div>
+</header>
 
- <div class="controls">
-  <div id="debug"></div>
-  <div class="hint">
-   Разводи пальцы — увеличивай огонь.<br>
-   Разверни ладонь — выстрели.
-  </div>
-  <button id="scan" disabled>
-   ✋ Включить сканирование
-  </button>
-  <button id="switch" class="secondary" disabled>
-   ↻ Сменить камеру
-  </button>
+<div id="notice"></div>
+
+<footer>
+ <div class="hint">
+  Раскрой ладонь — по экрану расползётся иней.<br>
+  Сожми кулак или убери руку — лёд растает.
  </div>
-</div>
+ <button id="scan" disabled>
+  ✋ Включить распознавание
+ </button>
+ <button id="flip" class="secondary" disabled>
+  ↻ Сменить камеру
+ </button>
+</footer>
 
 <div id="overlay">
  <div class="panel">
-  <h1>🔥 FIRE CAM</h1>
-  <p>Магический огонь в твоей ладони</p>
+  <h1>❄️ ICE CAM</h1>
+  <p>Покрой камеру волшебным инеем</p>
   <button id="start">Включить камеру</button>
   <p id="error"></p>
  </div>
 </div>
 
 <script type="module">
-const $=id=>document.getElementById(id);
-const video=$("video");
-const canvas=$("scene");
-const ctx=canvas.getContext("2d",{alpha:false});
-const status=$("status");
-const scanBtn=$("scan");
-const switchBtn=$("switch");
-const debug=$("debug");
+const el=id=>document.getElementById(id);
 
-const VERSION="0.10.14";
-const BASES=[
- "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@"+VERSION,
- "https://unpkg.com/@mediapipe/tasks-vision@"+VERSION
+const video=el('video');
+const screen=el('screen');
+const ctx=screen.getContext('2d',{alpha:false});
+
+const status=el('status');
+const scan=el('scan');
+const flip=el('flip');
+
+const modelUrl=
+ 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+
+const bases=[
+ 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14',
+ 'https://unpkg.com/@mediapipe/tasks-vision@0.10.14'
 ];
-const MODEL=
- "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
 
-let detector=null,stream=null;
-let running=false,scanning=false,loading=false;
-let facing="environment";
+let detector=null;
+let stream=null;
+let active=false;
+let recognizing=false;
+let loading=false;
+let facing='environment';
 
-let W=0,H=0,scale=1,dx=0,dy=0;
-let hand=null,palmOpen=false,firePower=0;
-let lastSeen=0,lastVideoTime=-1,lastDetection=0;
-let lastTick=0;
+let frostTarget=0;
+let frost=0;
+let openFrames=0;
+let closedFrames=0;
+let lastVideoTime=-1;
+let lastDetect=0;
 
-let shot=null;
-let shotArmed=true;
-let turnStarted=0;
-let stableOrientation="unknown";
-let candidateOrientation="unknown";
-let candidateSince=0;
+let handX=.5;
+let handY=.5;
 
-const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-const lerp=(a,b,t)=>a+(b-a)*t;
-const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+let iceTexture=document.createElement("canvas");
+let iceCtx=iceTexture.getContext("2d");
+let lastFrame=0;
 
-function setStatus(s){status.textContent=s}
-function showError(s){
- debug.textContent=s;
- debug.classList.add("show");
- console.error(s);
+let width=0;
+let height=0;
+let ratio=1;
+let offsetX=0;
+let offsetY=0;
+
+const setStatus=(message,isFrozen=false)=>{
+ status.textContent=message;
+ status.classList.toggle('frozen',isFrozen);
+};
+
+function showError(e){
+ const n=el('notice');
+ n.textContent=String(e);
+ n.style.display='block';
+ console.error(e);
 }
+
 function clearError(){
- debug.textContent="";
- debug.classList.remove("show");
+ el('notice').style.display='none';
 }
 
 function resize(){
  if(!video.videoWidth)return;
- const d=Math.min(devicePixelRatio||1,1.25);
- W=canvas.width=Math.round(innerWidth*d);
- H=canvas.height=Math.round(innerHeight*d);
- scale=Math.max(W/video.videoWidth,H/video.videoHeight);
- dx=(W-video.videoWidth*scale)/2;
- dy=(H-video.videoHeight*scale)/2;
-}
-addEventListener("resize",resize);
 
-function drawVideo(){
+ const d=Math.min(devicePixelRatio||1,1.5);
+ width=screen.width=Math.round(innerWidth*d);
+ height=screen.height=Math.round(innerHeight*d);
+
+ ratio=Math.max(
+  width/video.videoWidth,
+  height/video.videoHeight
+ );
+
+ offsetX=(width-video.videoWidth*ratio)/2;
+ offsetY=(height-video.videoHeight*ratio)/2;
+
+ frostTarget=0;
+ openFrames=0;
+ closedFrames=0;
+
+ makeIceTexture();
+}
+
+addEventListener('resize',resize);
+
+function drawCamera(){
  ctx.save();
- ctx.translate(dx,dy);
- if(facing==="user"){
-  ctx.translate(video.videoWidth*scale,0);
+ ctx.translate(offsetX,offsetY);
+
+ if(facing==='user'){
+  ctx.translate(video.videoWidth*ratio,0);
   ctx.scale(-1,1);
  }
- ctx.drawImage(video,0,0,
-  video.videoWidth*scale,video.videoHeight*scale);
+
+ ctx.drawImage(
+  video,0,0,
+  video.videoWidth*ratio,
+  video.videoHeight*ratio
+ );
+
  ctx.restore();
 }
 
-function point(p){
- return {
-  x:dx+(facing==="user"?1-p.x:p.x)
-    *video.videoWidth*scale,
-  y:dy+p.y*video.videoHeight*scale,
-  z:p.z||0
- };
+function distance(a,b){
+ return Math.hypot(a.x-b.x,a.y-b.y);
 }
 
-function getOrientation(raw){
- const a=raw[5],b=raw[17],c=raw[0];
- const cross=(b.x-a.x)*(c.y-a.y)-
-             (b.y-a.y)*(c.x-a.x);
-
- // Side is only a transitional orientation.
- if(Math.abs(cross)<.012)return "side";
-
- const back=facing==="user"?cross<0:cross>0;
- return back?"back":"front";
-}
-
-function updateOrientation(value,time){
- if(value!==candidateOrientation){
-  candidateOrientation=value;
-  candidateSince=time;
- }
- if(time-candidateSince>110){
-  stableOrientation=value;
- }
-}
-
-function fingerSpread(p,span){
- // Distances between adjacent fingertips,
- // normalized by the width of the palm.
- const tips=[8,12,16,20];
- let total=0;
- for(let i=0;i<3;i++){
-  total+=dist(p[tips[i]],p[tips[i+1]]);
- }
- const ratio=total/(span||1);
-
- // Normalize spread to 0..1.
- return clamp((ratio-1.25)/1.45,0,1);
-}
-
-function updateHand(result,time){
- const raw=result?.landmarks?.[0];
-
- if(!raw){
-  if(time-lastSeen>350){
-   palmOpen=false;
-   hand=null;
-   turnStarted=0;
-  }
-  return;
- }
-
- lastSeen=time;
- const p=raw.map(point);
- const span=dist(p[5],p[17]);
-
- const center={
-  x:(p[0].x+p[5].x+p[9].x+p[17].x)/4,
-  y:(p[0].y+p[5].y+p[9].y+p[17].y)/4
- };
-
+function isOpenPalm(points){
+ const wrist=points[0];
  let extended=0;
- for(const [tip,joint] of [
+
+ for(const [tip,pip] of [
   [8,6],[12,10],[16,14],[20,18]
  ]){
-  if(dist(p[tip],p[0])>
-     dist(p[joint],p[0])*1.12){
+  const dTip=distance(points[tip],wrist);
+  const dPip=distance(points[pip],wrist);
+
+  if(dTip>dPip*1.16){
    extended++;
   }
  }
- palmOpen=extended>=3;
 
- const orientation=getOrientation(raw);
- updateOrientation(orientation,time);
+ return extended>=3;
+}
 
- const spread=fingerSpread(p,span);
+function lerp(a,b,t){
+ return a+(b-a)*t;
+}
 
- // Keep ball size stable when palm turns sideways.
- const sizeBase=hand?.baseSpan||span;
- const safeSpan=clamp(
-  span,
-  sizeBase*.65,
-  sizeBase*1.45
+function makeIceTexture(){
+ iceTexture.width=width;
+ iceTexture.height=height;
+
+ const c=iceCtx;
+ const w=width;
+ const h=height;
+
+ c.clearRect(0,0,w,h);
+
+ // Иней по краям экрана
+ const edge=c.createRadialGradient(
+  w*.5,h*.5,Math.min(w,h)*.12,
+  w*.5,h*.5,Math.max(w,h)*.75
  );
 
- // Ball position: slightly above palm toward fingers.
- const vx=p[9].x-p[0].x;
- const vy=p[9].y-p[0].y;
- const len=Math.hypot(vx,vy)||1;
- const ux=vx/len,uy=vy/len;
+ edge.addColorStop(0,'rgba(185,232,255,0)');
+ edge.addColorStop(.54,'rgba(188,229,251,.035)');
+ edge.addColorStop(.8,'rgba(197,234,255,.24)');
+ edge.addColorStop(1,'rgba(227,247,255,.62)');
 
- const target={
-  x:center.x+ux*safeSpan*.6,
-  y:center.y+uy*safeSpan*.6,
-  r:clamp(safeSpan*(.48+spread*.52),22,W*.32),
-  baseSpan:lerp(sizeBase,span,.035),
-  spread,
-  orientation:stableOrientation
+ c.fillStyle=edge;
+ c.fillRect(0,0,w,h);
+
+ // Генератор случайных ледяных узоров
+ let seed=17391;
+
+ const rnd=()=>{
+  seed=(seed*1664525+1013904223)>>>0;
+  return seed/4294967296;
  };
 
- if(!hand){
-  hand=target;
- }else{
-  hand.x=lerp(hand.x,target.x,.27);
-  hand.y=lerp(hand.y,target.y,.27);
-  hand.r=lerp(hand.r,target.r,.18);
-  hand.spread=lerp(hand.spread,spread,.18);
-  hand.baseSpan=target.baseSpan;
-  hand.orientation=stableOrientation;
- }
+ function twig(x,y,angle,length,depth){
+  if(depth<=0||length<2)return;
 
- handleGesture(time);
-}
+  const ex=x+Math.cos(angle)*length;
+  const ey=y+Math.sin(angle)*length;
 
-function handleGesture(time){
- if(!hand||!palmOpen){
-  turnStarted=0;
-  return;
- }
+  c.strokeStyle=depth>3
+   ?'rgba(218,247,255,.48)'
+   :'rgba(240,252,255,.33)';
 
- if(hand.orientation==="front"){
-  if(!shot){
-   shotArmed=true;
+  c.lineWidth=Math.max(.65,width/900)*(depth/3);
+
+  c.beginPath();
+  c.moveTo(x,y);
+  c.lineTo(ex,ey);
+  c.stroke();
+
+  if(depth>1){
+   twig(
+    lerp(x,ex,.6),
+    lerp(y,ey,.6),
+    angle+.55,
+    length*.52,
+    depth-1
+   );
+
+   twig(
+    lerp(x,ex,.6),
+    lerp(y,ey,.6),
+    angle-.55,
+    length*.52,
+    depth-1
+   );
+
+   twig(
+    ex,ey,
+    angle+(rnd()-.5)*.22,
+    length*.75,
+    depth-1
+   );
   }
-  turnStarted=0;
- }else if(hand.orientation==="side"){
-  // Sideways palm never removes the fireball.
-  turnStarted=0;
- }else if(hand.orientation==="back"){
-  if(shotArmed&&!shot){
-   if(!turnStarted)turnStarted=time;
-   if(time-turnStarted>220){
-    shoot(time);
-    shotArmed=false;
-    turnStarted=0;
-   }
-  }
  }
-}
 
-function shoot(time){
- if(!hand)return;
- shot={
-  x:hand.x,
-  y:hand.y,
-  r:hand.r*1.25,
-  start:time,
-  duration:1100
- };
- setStatus("🔥 ОГНЕННЫЙ ВЫСТРЕЛ!");
-}
+ // Ледяные ветви растут от краёв
+ for(let i=0;i<58;i++){
+  const side=i%4;
+  let x,y,a;
 
-function fireball(x,y,r,t,alpha=1,boost=1){
- if(r<1||alpha<=0)return;
- ctx.save();
- ctx.globalAlpha=alpha;
- ctx.globalCompositeOperation="screen";
+  if(side===0){
+   x=rnd()*w;
+   y=0;
+   a=Math.PI/2+(rnd()-.5)*1.5;
+  }else if(side===1){
+   x=w;
+   y=rnd()*h;
+   a=Math.PI+(rnd()-.5)*1.5;
+  }else if(side===2){
+   x=rnd()*w;
+   y=h;
+   a=-Math.PI/2+(rnd()-.5)*1.5;
+  }else{
+   x=0;
+   y=rnd()*h;
+   a=(rnd()-.5)*1.5;
+  }
 
- // Warm outer glow.
- const glow=ctx.createRadialGradient(x,y,0,x,y,r*2.5);
- glow.addColorStop(0,"rgba(255,180,65,.45)");
- glow.addColorStop(.25,"rgba(255,105,15,.3)");
- glow.addColorStop(.65,"rgba(255,50,0,.09)");
- glow.addColorStop(1,"rgba(255,30,0,0)");
- ctx.fillStyle=glow;
- ctx.beginPath();
- ctx.arc(x,y,r*2.5,0,Math.PI*2);
- ctx.fill();
-
- // Soft moving flame particles.
- for(let i=0;i<52;i++){
-  const q=(i*.618033+t*(.25+i%5*.03))%1;
-  const a=i*2.399+t*.4;
-  const px=x+Math.cos(a)*r*q*.75;
-  const py=y+Math.sin(a)*r*q*.45-q*r*.65;
-  const size=r*(.09+.17*(1-q))*boost;
-
-  const g=ctx.createRadialGradient(
-   px,py,0,px,py,size*2
+  twig(
+   x,y,a,
+   Math.min(w,h)*(.055+rnd()*.12),
+   4
   );
-  g.addColorStop(0,"rgba(255,245,175,.65)");
-  g.addColorStop(.35,"rgba(255,150,25,.55)");
-  g.addColorStop(1,"rgba(255,50,0,0)");
-
-  ctx.fillStyle=g;
-  ctx.beginPath();
-  ctx.arc(px,py,size*2,0,Math.PI*2);
-  ctx.fill();
  }
 
- // Bright golden center.
- const core=ctx.createRadialGradient(
-  x-r*.2,y-r*.2,0,x,y,r
+ // Мелкие ледяные кристаллы
+ for(let i=0;i<1400;i++){
+  const x=rnd()*w;
+  const y=rnd()*h;
+
+  const e=Math.max(
+   Math.abs(x/w-.5)*2,
+   Math.abs(y/h-.5)*2
+  );
+
+  if(rnd()>e*.85)continue;
+
+  c.fillStyle=
+   `rgba(232,250,255,${.04+rnd()*.33})`;
+
+  c.fillRect(
+   x,y,
+   .5+rnd()*2,
+   .5+rnd()*2
+  );
+ }
+}
+
+function handleDetection(result){
+ const points=result?.landmarks?.[0];
+ const open=!!points&&isOpenPalm(points);
+
+ if(points){
+  const p=points[9];
+
+  handX=lerp(
+   handX,
+   facing==='user'?1-p.x:p.x,
+   .2
+  );
+
+  handY=lerp(handY,p.y,.2);
+ }
+
+ if(open){
+  openFrames++;
+  closedFrames=0;
+ }else{
+  closedFrames++;
+  openFrames=0;
+ }
+
+ if(openFrames>=3){
+  frostTarget=1;
+  setStatus('❄️ Ледяная магия',true);
+ }
+
+ if(closedFrames>=5){
+  frostTarget=0;
+  setStatus('✋ Покажи ладонь');
+ }
+}
+
+function drawFrost(t){
+ if(frost<.005)return;
+
+ ctx.save();
+
+ // Холодный голубой оттенок
+ ctx.fillStyle=`rgba(96,186,235,${.09*frost})`;
+ ctx.fillRect(0,0,width,height);
+
+ ctx.globalAlpha=frost;
+ ctx.drawImage(iceTexture,0,0);
+
+ // Магическое свечение около ладони
+ const x=handX*width;
+ const y=handY*height;
+ const r=Math.max(width,height)*(.15+.75*frost);
+
+ const g=ctx.createRadialGradient(
+  x,y,0,x,y,r
  );
- core.addColorStop(0,"rgba(255,253,220,.95)");
- core.addColorStop(.22,"rgba(255,230,120,.95)");
- core.addColorStop(.55,"rgba(255,140,25,.85)");
- core.addColorStop(.85,"rgba(255,65,0,.5)");
- core.addColorStop(1,"rgba(255,45,0,0)");
- ctx.fillStyle=core;
- ctx.beginPath();
- ctx.arc(x,y,r*(1+.035*Math.sin(t*8)),0,Math.PI*2);
- ctx.fill();
 
- // Small irregular sparks.
- for(let i=0;i<22;i++){
-  const q=(i*.37+t*(.28+i%4*.05))%1;
-  const a=i*2.4;
-  const px=x+Math.sin(a)*r*(.2+q);
-  const py=y-r*(.2+q*1.4);
-  ctx.globalAlpha=alpha*(1-q)*.65;
-  ctx.fillStyle=i%3?"#ffac40":"#fff0b0";
+ g.addColorStop(
+  0,`rgba(228,250,255,${.10*frost})`
+ );
+ g.addColorStop(
+  .35,`rgba(132,220,255,${.09*frost})`
+ );
+ g.addColorStop(
+  1,'rgba(130,215,255,0)'
+ );
+
+ ctx.fillStyle=g;
+ ctx.fillRect(0,0,width,height);
+
+ // Мерцающие снежные частицы
+ for(let i=0;i<65;i++){
+  const a=i*2.399963;
+
+  const phase=(
+   i*.618+
+   t*.00011*(1+i%4*.2)
+  )%1;
+
+  const rr=(.08+phase*.7)*
+   Math.min(width,height);
+
+  const px=x+Math.cos(a)*rr;
+  const py=y+Math.sin(a)*rr;
+
+  if(
+   px<0||px>width||
+   py<0||py>height
+  )continue;
+
+  const twinkle=
+   .35+.65*Math.pow(
+    Math.sin(t*.004+i*3),2
+   );
+
+  ctx.globalAlpha=
+   frost*(1-phase)*twinkle*.85;
+
+  ctx.strokeStyle='#e9fbff';
+  ctx.lineWidth=Math.max(1,width/900);
+
+  const size=(1.5+i%3)*width/420;
+
   ctx.beginPath();
-  ctx.arc(px,py,Math.max(1,r*.018),0,Math.PI*2);
-  ctx.fill();
+  ctx.moveTo(px-size,py);
+  ctx.lineTo(px+size,py);
+  ctx.moveTo(px,py-size);
+  ctx.lineTo(px,py+size);
+  ctx.stroke();
  }
+
  ctx.restore();
 }
 
-function renderHeldFire(time){
- if(!hand||firePower<.01)return;
-
- const t=time/1000;
-
- // Visible vertical floating motion.
- const bob=Math.sin(t*2.5)*hand.r*.17;
- const drift=Math.sin(t*1.3)*hand.r*.055;
-
- fireball(
-  hand.x+drift,
-  hand.y+bob,
-  hand.r*firePower,
-  t,
-  firePower
- );
-}
-
-function renderShot(time){
- if(!shot)return;
- const p=(time-shot.start)/shot.duration;
- if(p>=1){
-  shot=null;
-  return;
- }
-
- const q=clamp(p,0,1);
- const ease=1-Math.pow(1-q,2.5);
-
- // Large initial burst, then movement away.
- const burst=1+1.05*Math.sin(Math.min(1,q*3)*Math.PI/2);
- const r=shot.r*burst*(1-.86*ease);
- const x=shot.x;
- const y=shot.y-shot.r*.65*ease;
- const alpha=Math.pow(1-q,.7);
-
- // Flame trail behind projectile.
- for(let i=6;i>=1;i--){
-  const lag=Math.max(0,q-i*.035);
-  const le=1-Math.pow(1-lag,2.5);
-  const ly=shot.y-shot.r*.65*le;
-  const lr=shot.r*(1-.86*le)*(.3+i*.035);
-  fireball(x,ly,lr,time/1000-i*.06,
-   alpha*.08,1);
- }
-
- fireball(x,y,r,time/1000,alpha,1.15);
-}
-
-function render(time){
- if(!running)return;
+function render(t){
+ if(!active)return;
 
  if(video.readyState>=2){
-  ctx.clearRect(0,0,W,H);
-  drawVideo();
+  if(!width||!height)resize();
 
-  if(scanning&&detector&&
-     video.currentTime!==lastVideoTime&&
-     time-lastDetection>=65){
+  drawCamera();
 
+  if(
+   recognizing&&detector&&
+   video.currentTime!==lastVideoTime&&
+   t-lastDetect>65
+  ){
    lastVideoTime=video.currentTime;
-   lastDetection=time;
+   lastDetect=t;
 
    try{
-    const result=detector.detectForVideo(video,time);
-    updateHand(result,time);
-
-    if(!result.landmarks?.length){
-     setStatus("✋ Покажи руку");
-    }else if(!palmOpen){
-     setStatus("✊ Раскрой ладонь");
-    }else if(hand?.orientation==="side"){
-     setStatus("🔥 Огонь над ладонью");
-    }else if(hand?.orientation==="back"){
-     setStatus("🔥 Огненный выстрел");
-    }else{
-     setStatus("🔥 Разводи пальцы");
-    }
+    handleDetection(
+     detector.detectForVideo(video,t)
+    );
    }catch(e){
-    showError("Ошибка распознавания: "+e.message);
-    stopScanning();
+    showError(
+     'Ошибка распознавания: '+e.message
+    );
+    stopRecognition();
    }
   }
 
-  if(scanning){
-   if(time-lastSeen>350)palmOpen=false;
+  const dt=Math.min(
+   60,t-(lastFrame||t)
+  );
 
-   const dt=Math.min(50,time-(lastTick||time));
-   const smooth=1-Math.exp(-dt/120);
+  frost=lerp(
+   frost,
+   frostTarget,
+   1-Math.exp(
+    -dt/(frostTarget?650:500)
+   )
+  );
 
-   const visible=hand&&palmOpen&&shotArmed;
-   firePower=lerp(
-    firePower,
-    visible?1:0,
-    smooth
-   );
-
-   renderHeldFire(time);
-   renderShot(time);
-  }else{
-   firePower=0;
-  }
+  drawFrost(t);
  }
 
- lastTick=time;
+ lastFrame=t;
  requestAnimationFrame(render);
 }
 
 async function openCamera(){
  if(stream){
-  stream.getTracks().forEach(t=>t.stop());
+  stream.getTracks().forEach(
+   track=>track.stop()
+  );
  }
- stream=null;
 
  stream=await navigator.mediaDevices.getUserMedia({
   audio:false,
@@ -541,45 +549,46 @@ async function openCamera(){
  if(!video.videoWidth){
   await new Promise(resolve=>{
    video.addEventListener(
-    "loadedmetadata",resolve,{once:true}
+    'loadedmetadata',
+    resolve,
+    {once:true}
    );
   });
  }
 
  resize();
- hand=null;
- palmOpen=false;
- firePower=0;
- shot=null;
- shotArmed=true;
- turnStarted=0;
- stableOrientation="unknown";
- candidateOrientation="unknown";
  lastVideoTime=-1;
- lastSeen=0;
+
+ setStatus(
+  recognizing
+   ?'✋ Покажи ладонь'
+   :'Камера работает'
+ );
 }
 
-async function createDetector(){
- const errors=[];
+async function loadDetector(){
+ const failures=[];
 
- for(const base of BASES){
+ for(const base of bases){
   try{
-   setStatus("Загрузка MediaPipe...");
-   const mod=await import(base+"/vision_bundle.mjs");
-   const vision=await mod.FilesetResolver.forVisionTasks(
-    base+"/wasm"
+   const mod=await import(
+    base+'/vision_bundle.mjs'
    );
 
-   for(const delegate of ["GPU","CPU"]){
+   const files=
+    await mod.FilesetResolver.forVisionTasks(
+     base+'/wasm'
+    );
+
+   for(const delegate of ['GPU','CPU']){
     try{
-     setStatus("Запуск распознавания...");
      return await mod.HandLandmarker.createFromOptions(
-      vision,{
+      files,{
        baseOptions:{
-        modelAssetPath:MODEL,
+        modelAssetPath:modelUrl,
         delegate
        },
-       runningMode:"VIDEO",
+       runningMode:'VIDEO',
        numHands:1,
        minHandDetectionConfidence:.55,
        minHandPresenceConfidence:.55,
@@ -587,104 +596,129 @@ async function createDetector(){
       }
      );
     }catch(e){
-     errors.push(delegate+": "+e.message);
+     failures.push(
+      delegate+': '+e.message
+     );
     }
    }
   }catch(e){
-   errors.push(base+": "+e.message);
+   failures.push(
+    base+': '+e.message
+   );
   }
  }
 
- throw Error(errors.join("\n"));
+ throw new Error(failures.join('\n'));
 }
 
-function stopScanning(){
- scanning=false;
- palmOpen=false;
- hand=null;
- firePower=0;
- shot=null;
- shotArmed=true;
- turnStarted=0;
- scanBtn.textContent="✋ Включить сканирование";
- setStatus("Сканирование выключено");
+function stopRecognition(){
+ recognizing=false;
+ frostTarget=0;
+ openFrames=0;
+ closedFrames=0;
+
+ scan.textContent=
+  '✋ Включить распознавание';
+
+ setStatus('Сканирование выключено');
 }
 
-async function startScanning(){
+async function startRecognition(){
  if(loading)return;
+
  loading=true;
- scanBtn.disabled=true;
- scanBtn.textContent="⏳ Загрузка...";
+ scan.disabled=true;
+ scan.textContent='⏳ Загрузка модели...';
  clearError();
 
  try{
   if(!detector){
-   detector=await createDetector();
+   detector=await loadDetector();
   }
-  scanning=true;
-  shotArmed=true;
-  lastSeen=0;
+
+  recognizing=true;
+  frostTarget=0;
+  openFrames=0;
+  closedFrames=0;
   lastVideoTime=-1;
-  scanBtn.textContent="⏹ Выключить сканирование";
-  setStatus("✋ Покажи ладонь");
+
+  scan.textContent=
+   '⏹ Выключить распознавание';
+
+  setStatus('✋ Покажи ладонь');
  }catch(e){
-  scanning=false;
-  showError("Ошибка модели:\n"+e.message);
-  setStatus("Ошибка сканирования");
-  scanBtn.textContent="↻ Повторить сканирование";
+  showError(
+   'Не удалось загрузить модель:\n'+
+   e.message
+  );
+
+  scan.textContent=
+   '↻ Повторить распознавание';
+
+  setStatus('Ошибка загрузки');
  }finally{
   loading=false;
-  scanBtn.disabled=false;
+  scan.disabled=false;
  }
 }
 
-scanBtn.onclick=()=>{
+scan.onclick=()=>{
  if(loading)return;
- if(scanning)stopScanning();
- else startScanning();
+
+ if(recognizing){
+  stopRecognition();
+ }else{
+  startRecognition();
+ }
 };
 
-$("start").onclick=async()=>{
- const btn=$("start");
- btn.disabled=true;
- $("error").textContent="";
+el('start').onclick=async()=>{
+ const button=el('start');
+ button.disabled=true;
+ el('error').textContent='';
 
  try{
   if(!navigator.mediaDevices?.getUserMedia){
-   throw Error("Нужен HTTPS и доступ к камере");
+   throw new Error(
+    'Нужен HTTPS и разрешение на камеру'
+   );
   }
 
   await openCamera();
-  $("overlay").style.display="none";
-  scanBtn.disabled=false;
-  switchBtn.disabled=false;
 
-  if(!running){
-   running=true;
+  el('overlay').style.display='none';
+  scan.disabled=false;
+  flip.disabled=false;
+
+  if(!active){
+   active=true;
    requestAnimationFrame(render);
   }
-  setStatus("Камера работает");
  }catch(e){
-  $("error").textContent=e.message;
+  el('error').textContent=e.message;
  }finally{
-  btn.disabled=false;
+  button.disabled=false;
  }
 };
 
-switchBtn.onclick=async()=>{
- switchBtn.disabled=true;
+flip.onclick=async()=>{
+ flip.disabled=true;
+
  const previous=facing;
- facing=facing==="user"?"environment":"user";
+ facing=facing==='environment'
+  ?'user'
+  :'environment';
 
  try{
   await openCamera();
-  setStatus(scanning?
-   "✋ Покажи ладонь":"Камера работает");
  }catch(e){
   facing=previous;
-  showError("Ошибка камеры: "+e.message);
+  showError(
+   'Ошибка смены камеры: '+e.message
+  );
+ }finally{
+  flip.disabled=false;
  }
- switchBtn.disabled=false;
 };
 </script>
 </body>
