@@ -1,233 +1,255 @@
 
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
-<meta charset="utf-8">
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<meta name="theme-color" content="#08090c">
-<title>Ice Cam — Frost</title>
+<meta name="theme-color" content="#07121f">
+<title>Ice Cam 1.1</title>
 <style>
 *{box-sizing:border-box}
 html,body{
- margin:0;width:100%;height:100%;overflow:hidden;
- background:#08090c;color:#fff;
- font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif
+ margin:0;width:100%;height:100%;
+ overflow:hidden;background:#030914;color:white;
+ font-family:-apple-system,BlinkMacSystemFont,Arial,sans-serif
 }
 video{display:none}
 canvas{
  position:fixed;inset:0;width:100%;height:100%;
- object-fit:cover
-}
-header{
- position:fixed;top:0;left:0;right:0;
- display:flex;align-items:flex-start;
- justify-content:space-between;gap:12px;
- padding:calc(env(safe-area-inset-top) + 17px) 16px 0;
  pointer-events:none
 }
+.ui{
+ position:fixed;inset:0;
+ display:flex;flex-direction:column;
+ justify-content:space-between;
+ padding:calc(env(safe-area-inset-top) + 18px) 16px
+ calc(env(safe-area-inset-bottom) + 18px);
+ pointer-events:none
+}
+.top{
+ display:flex;justify-content:space-between;
+ align-items:flex-start;gap:10px
+}
 .brand{
- font-size:21px;font-weight:850;
- text-shadow:0 2px 10px #000
+ font-size:23px;font-weight:900;
+ text-shadow:0 2px 8px #000
 }
-.status{
- max-width:62%;font-size:12px;line-height:1.3;
- text-align:center;background:#111b;
- border:1px solid #ffffff20;padding:11px 13px;
- border-radius:15px;backdrop-filter:blur(10px)
+#status{
+ max-width:60%;padding:12px;
+ border-radius:16px;background:#081a2acc;
+ border:1px solid #bdefff33;
+ font-size:12px;text-align:center;
+ backdrop-filter:blur(10px)
 }
-.status.frozen{background:#2666dbdc}
-footer{
- position:fixed;bottom:0;left:0;right:0;
- padding:0 16px calc(env(safe-area-inset-bottom) + 18px);
- display:grid;gap:10px
-}
+.controls{display:grid;gap:11px}
 .hint{
- text-align:center;text-shadow:0 2px 8px #000;
- font-size:13px;line-height:1.4
+ text-align:center;font-size:13px;
+ line-height:1.5;text-shadow:0 2px 8px #000
 }
 button{
- width:100%;border:0;border-radius:17px;
- padding:17px 12px;font-size:16px;
- font-weight:750;background:#ff873b;
- color:#1b0b04;cursor:pointer
+ pointer-events:auto;width:100%;
+ padding:17px;border:0;border-radius:17px;
+ font-size:16px;font-weight:800;
+ background:#9be8ff;color:#092033
 }
 button.secondary{
- background:#ffffff37;color:#fff;
+ background:#ffffff38;color:white;
  backdrop-filter:blur(12px)
 }
-button:disabled{opacity:.55}
+button:disabled{opacity:.5}
 #overlay{
- position:fixed;inset:0;
- background:radial-gradient(circle at 50% 35%,#382317,#090a0d 70%);
- display:flex;align-items:center;justify-content:center;
- padding:25px;text-align:center;z-index:3
+ position:fixed;inset:0;z-index:10;
+ display:flex;align-items:center;
+ justify-content:center;text-align:center;
+ background:radial-gradient(#173e5b,#030914 75%);
+ padding:25px
 }
-#overlay .panel{max-width:370px;width:100%}
-h1{font-size:37px;margin:0 0 12px}
-p{color:#ddd;line-height:1.5}
-#error{color:#ffb4a4;font-size:13px;white-space:pre-wrap}
-#notice{
- display:none;position:fixed;left:16px;right:16px;
- top:calc(env(safe-area-inset-top) + 82px);
- background:#711f1fe9;padding:12px;border-radius:12px;
+.panel{width:100%;max-width:360px}
+.panel h1{font-size:40px}
+.panel p{line-height:1.5;color:#d6e7f2}
+#error{
+ color:#ffb9a5;white-space:pre-wrap;
+ font-size:13px
+}
+#debug{
+ display:none;padding:12px;
+ background:#162a3de8;border-radius:12px;
  font-size:12px;white-space:pre-wrap;
- max-height:30vh;overflow:auto
+ max-height:140px;overflow:auto;
+ pointer-events:auto
 }
+#debug.show{display:block}
 </style>
 </head>
 <body>
 
 <video id="video" autoplay muted playsinline></video>
-<canvas id="screen"></canvas>
+<canvas id="scene"></canvas>
 
-<header>
- <div class="brand">❄️ ICE CAM</div>
- <div id="status" class="status">Камера выключена</div>
-</header>
-
-<div id="notice"></div>
-
-<footer>
- <div class="hint">
-  Раскрой ладонь — по экрану расползётся иней.<br>
-  Сожми кулак или убери руку — лёд растает.
+<div class="ui">
+ <div class="top">
+  <div class="brand">❄️ ICE CAM</div>
+  <div id="status">Камера выключена</div>
  </div>
- <button id="scan" disabled>
-  ✋ Включить распознавание
- </button>
- <button id="flip" class="secondary" disabled>
-  ↻ Сменить камеру
- </button>
-</footer>
+
+ <div class="controls">
+  <div id="debug"></div>
+  <div class="hint">
+   ✋ Раскрой ладонь — заморозь экран.<br>
+   ❄️ Опусти пальцы вниз — создай снегопад.
+  </div>
+  <button id="scan" disabled>
+   ✋ Включить магию
+  </button>
+  <button id="switch" class="secondary" disabled>
+   ↻ Сменить камеру
+  </button>
+ </div>
+</div>
 
 <div id="overlay">
  <div class="panel">
   <h1>❄️ ICE CAM</h1>
-  <p>Покрой камеру волшебным инеем</p>
+  <p>Управляй ледяной магией своей рукой</p>
   <button id="start">Включить камеру</button>
   <p id="error"></p>
  </div>
 </div>
 
 <script type="module">
-const el=id=>document.getElementById(id);
 
-const video=el('video');
-const screen=el('screen');
-const ctx=screen.getContext('2d',{alpha:false});
+const $=id=>document.getElementById(id);
 
-const status=el('status');
-const scan=el('scan');
-const flip=el('flip');
+const video=$("video");
+const canvas=$("scene");
+const ctx=canvas.getContext("2d",{alpha:false});
+const status=$("status");
+const scanBtn=$("scan");
+const switchBtn=$("switch");
+const debug=$("debug");
 
-const modelUrl=
- 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+const VERSION="0.10.14";
 
-const bases=[
- 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14',
- 'https://unpkg.com/@mediapipe/tasks-vision@0.10.14'
+const BASES=[
+ "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@"+VERSION,
+ "https://unpkg.com/@mediapipe/tasks-vision@"+VERSION
 ];
+
+const MODEL=
+ "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
 
 let detector=null;
 let stream=null;
-let active=false;
-let recognizing=false;
+let running=false;
+let scanning=false;
 let loading=false;
-let facing='environment';
+let facing="environment";
 
-let frostTarget=0;
+let W=0,H=0;
+let scale=1,dx=0,dy=0;
+
 let frost=0;
+let frostTarget=0;
+let snowing=false;
+
+let handX=0;
+let handY=0;
+let handSize=80;
+
 let openFrames=0;
 let closedFrames=0;
+let downFrames=0;
+let upFrames=0;
+
+let lastSeen=0;
 let lastVideoTime=-1;
-let lastDetect=0;
+let lastDetection=0;
+let lastTick=0;
 
-let handX=.5;
-let handY=.5;
+const snowflakes=[];
+const MAX_SNOW=260;
 
-let iceTexture=document.createElement("canvas");
-let iceCtx=iceTexture.getContext("2d");
-let lastFrame=0;
+const frostCanvas=document.createElement("canvas");
+const frostCtx=frostCanvas.getContext("2d");
 
-let width=0;
-let height=0;
-let ratio=1;
-let offsetX=0;
-let offsetY=0;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 
-const setStatus=(message,isFrozen=false)=>{
- status.textContent=message;
- status.classList.toggle('frozen',isFrozen);
-};
+function setStatus(s){
+ status.textContent=s;
+}
 
-function showError(e){
- const n=el('notice');
- n.textContent=String(e);
- n.style.display='block';
- console.error(e);
+function showError(s){
+ debug.textContent=s;
+ debug.classList.add("show");
+ console.error(s);
 }
 
 function clearError(){
- el('notice').style.display='none';
+ debug.textContent="";
+ debug.classList.remove("show");
 }
 
 function resize(){
  if(!video.videoWidth)return;
 
  const d=Math.min(devicePixelRatio||1,1.5);
- width=screen.width=Math.round(innerWidth*d);
- height=screen.height=Math.round(innerHeight*d);
 
- ratio=Math.max(
-  width/video.videoWidth,
-  height/video.videoHeight
+ W=canvas.width=Math.round(innerWidth*d);
+ H=canvas.height=Math.round(innerHeight*d);
+
+ scale=Math.max(
+  W/video.videoWidth,
+  H/video.videoHeight
  );
 
- offsetX=(width-video.videoWidth*ratio)/2;
- offsetY=(height-video.videoHeight*ratio)/2;
+ dx=(W-video.videoWidth*scale)/2;
+ dy=(H-video.videoHeight*scale)/2;
 
- frostTarget=0;
- openFrames=0;
- closedFrames=0;
+ frostCanvas.width=W;
+ frostCanvas.height=H;
 
- makeIceTexture();
+ generateFrost();
 }
 
-addEventListener('resize',resize);
+addEventListener("resize",resize);
 
-function drawCamera(){
+function drawVideo(){
  ctx.save();
- ctx.translate(offsetX,offsetY);
+ ctx.translate(dx,dy);
 
- if(facing==='user'){
-  ctx.translate(video.videoWidth*ratio,0);
+ if(facing==="user"){
+  ctx.translate(video.videoWidth*scale,0);
   ctx.scale(-1,1);
  }
 
  ctx.drawImage(
   video,0,0,
-  video.videoWidth*ratio,
-  video.videoHeight*ratio
+  video.videoWidth*scale,
+  video.videoHeight*scale
  );
 
  ctx.restore();
 }
 
-function distance(a,b){
- return Math.hypot(a.x-b.x,a.y-b.y);
+function point(p){
+ return {
+  x:dx+(facing==="user"?1-p.x:p.x)
+   *video.videoWidth*scale,
+  y:dy+p.y*video.videoHeight*scale
+ };
 }
 
-function isOpenPalm(points){
- const wrist=points[0];
+function isOpenPalm(p){
+ const wrist=p[0];
  let extended=0;
 
- for(const [tip,pip] of [
+ for(const [tip,joint] of [
   [8,6],[12,10],[16,14],[20,18]
  ]){
-  const dTip=distance(points[tip],wrist);
-  const dPip=distance(points[pip],wrist);
-
-  if(dTip>dPip*1.16){
+  if(dist(p[tip],wrist)>
+     dist(p[joint],wrist)*1.14){
    extended++;
   }
  }
@@ -235,295 +257,433 @@ function isOpenPalm(points){
  return extended>=3;
 }
 
-function lerp(a,b,t){
- return a+(b-a)*t;
+// Detect fingers pointing down on screen.
+// This is a 2D gesture, not true floor orientation.
+function fingersPointDown(p){
+ const wrist=p[0];
+ const middle=p[12];
+ const base=p[9];
+
+ const vx=middle.x-wrist.x;
+ const vy=middle.y-wrist.y;
+
+ const len=Math.hypot(vx,vy)||1;
+
+ const vertical=vy/len;
+
+ // Middle fingertip must point downward.
+ const pointingDown=vertical>.62;
+
+ // Finger must extend beyond its base.
+ const extended=
+  dist(middle,wrist)>
+  dist(base,wrist)*1.35;
+
+ return pointingDown&&extended;
 }
 
-function makeIceTexture(){
- iceTexture.width=width;
- iceTexture.height=height;
+function handleDetection(result,time){
+ const raw=result?.landmarks?.[0];
 
- const c=iceCtx;
- const w=width;
- const h=height;
+ if(!raw){
+  if(time-lastSeen>280){
+   closedFrames++;
+   openFrames=0;
+   downFrames=0;
 
- c.clearRect(0,0,w,h);
+   if(closedFrames>=5){
+    frostTarget=0;
+    snowing=false;
+    setStatus("✋ Покажи ладонь");
+   }
+  }
+  return;
+ }
 
- // Иней по краям экрана
- const edge=c.createRadialGradient(
-  w*.5,h*.5,Math.min(w,h)*.12,
-  w*.5,h*.5,Math.max(w,h)*.75
- );
+ lastSeen=time;
 
- edge.addColorStop(0,'rgba(185,232,255,0)');
- edge.addColorStop(.54,'rgba(188,229,251,.035)');
- edge.addColorStop(.8,'rgba(197,234,255,.24)');
- edge.addColorStop(1,'rgba(227,247,255,.62)');
+ const p=raw.map(point);
+ const open=isOpenPalm(p);
+ const down=open&&fingersPointDown(p);
 
- c.fillStyle=edge;
- c.fillRect(0,0,w,h);
-
- // Генератор случайных ледяных узоров
- let seed=17391;
-
- const rnd=()=>{
-  seed=(seed*1664525+1013904223)>>>0;
-  return seed/4294967296;
+ const palm={
+  x:(p[0].x+p[5].x+p[9].x+p[17].x)/4,
+  y:(p[0].y+p[5].y+p[9].y+p[17].y)/4
  };
 
- function twig(x,y,angle,length,depth){
-  if(depth<=0||length<2)return;
+ const size=dist(p[5],p[17]);
 
-  const ex=x+Math.cos(angle)*length;
-  const ey=y+Math.sin(angle)*length;
-
-  c.strokeStyle=depth>3
-   ?'rgba(218,247,255,.48)'
-   :'rgba(240,252,255,.33)';
-
-  c.lineWidth=Math.max(.65,width/900)*(depth/3);
-
-  c.beginPath();
-  c.moveTo(x,y);
-  c.lineTo(ex,ey);
-  c.stroke();
-
-  if(depth>1){
-   twig(
-    lerp(x,ex,.6),
-    lerp(y,ey,.6),
-    angle+.55,
-    length*.52,
-    depth-1
-   );
-
-   twig(
-    lerp(x,ex,.6),
-    lerp(y,ey,.6),
-    angle-.55,
-    length*.52,
-    depth-1
-   );
-
-   twig(
-    ex,ey,
-    angle+(rnd()-.5)*.22,
-    length*.75,
-    depth-1
-   );
-  }
- }
-
- // Ледяные ветви растут от краёв
- for(let i=0;i<58;i++){
-  const side=i%4;
-  let x,y,a;
-
-  if(side===0){
-   x=rnd()*w;
-   y=0;
-   a=Math.PI/2+(rnd()-.5)*1.5;
-  }else if(side===1){
-   x=w;
-   y=rnd()*h;
-   a=Math.PI+(rnd()-.5)*1.5;
-  }else if(side===2){
-   x=rnd()*w;
-   y=h;
-   a=-Math.PI/2+(rnd()-.5)*1.5;
-  }else{
-   x=0;
-   y=rnd()*h;
-   a=(rnd()-.5)*1.5;
-  }
-
-  twig(
-   x,y,a,
-   Math.min(w,h)*(.055+rnd()*.12),
-   4
-  );
- }
-
- // Мелкие ледяные кристаллы
- for(let i=0;i<1400;i++){
-  const x=rnd()*w;
-  const y=rnd()*h;
-
-  const e=Math.max(
-   Math.abs(x/w-.5)*2,
-   Math.abs(y/h-.5)*2
-  );
-
-  if(rnd()>e*.85)continue;
-
-  c.fillStyle=
-   `rgba(232,250,255,${.04+rnd()*.33})`;
-
-  c.fillRect(
-   x,y,
-   .5+rnd()*2,
-   .5+rnd()*2
-  );
- }
-}
-
-function handleDetection(result){
- const points=result?.landmarks?.[0];
- const open=!!points&&isOpenPalm(points);
-
- if(points){
-  const p=points[9];
-
-  handX=lerp(
-   handX,
-   facing==='user'?1-p.x:p.x,
-   .2
-  );
-
-  handY=lerp(handY,p.y,.2);
- }
+ handX=lerp(handX||palm.x,palm.x,.3);
+ handY=lerp(handY||palm.y,palm.y,.3);
+ handSize=lerp(handSize,size,.2);
 
  if(open){
   openFrames++;
   closedFrames=0;
+
+  if(openFrames>=3){
+   frostTarget=1;
+  }
  }else{
   closedFrames++;
   openFrames=0;
+  downFrames=0;
+
+  if(closedFrames>=5){
+   frostTarget=0;
+   snowing=false;
+  }
  }
 
- if(openFrames>=3){
-  frostTarget=1;
-  setStatus('❄️ Ледяная магия',true);
+ if(down){
+  downFrames++;
+  upFrames=0;
+
+  if(downFrames>=3){
+   snowing=true;
+  }
+ }else{
+  upFrames++;
+  downFrames=0;
+
+  if(upFrames>=3){
+   snowing=false;
+  }
  }
 
- if(closedFrames>=5){
-  frostTarget=0;
-  setStatus('✋ Покажи ладонь');
+ if(snowing){
+  setStatus("❄️ СНЕЖНАЯ МАГИЯ");
+ }else if(frostTarget){
+  setStatus("🧊 Экран замерзает");
+ }else{
+  setStatus("✋ Раскрой ладонь");
  }
 }
 
-function drawFrost(t){
- if(frost<.005)return;
+// Deterministic random generator for texture.
+let seed=14729;
+
+function rnd(){
+ seed=(seed*1664525+1013904223)>>>0;
+ return seed/4294967296;
+}
+
+function generateFrost(){
+ const c=frostCtx;
+ const w=W,h=H;
+
+ c.clearRect(0,0,w,h);
+
+ seed=14729;
+
+ // Stronger blue-white frost around edges.
+ const edge=c.createRadialGradient(
+  w*.5,h*.5,Math.min(w,h)*.08,
+  w*.5,h*.5,Math.max(w,h)*.75
+ );
+
+ edge.addColorStop(0,"rgba(170,228,255,0)");
+ edge.addColorStop(.32,"rgba(185,233,255,.03)");
+ edge.addColorStop(.58,"rgba(200,239,255,.14)");
+ edge.addColorStop(.78,"rgba(218,245,255,.4)");
+ edge.addColorStop(1,"rgba(238,251,255,.88)");
+
+ c.fillStyle=edge;
+ c.fillRect(0,0,w,h);
+
+ // Fractal ice branches.
+ function branch(x,y,a,len,depth){
+  if(depth<=0||len<2)return;
+
+  const nx=x+Math.cos(a)*len;
+  const ny=y+Math.sin(a)*len;
+
+  c.strokeStyle=depth>3
+   ?"rgba(245,254,255,.65)"
+   :"rgba(212,244,255,.45)";
+
+  c.lineWidth=Math.max(.7,w/900)*depth/3;
+
+  c.beginPath();
+  c.moveTo(x,y);
+  c.lineTo(nx,ny);
+  c.stroke();
+
+  if(depth>1){
+   const mx=lerp(x,nx,.58);
+   const my=lerp(y,ny,.58);
+
+   branch(mx,my,a+.57,len*.53,depth-1);
+   branch(mx,my,a-.57,len*.53,depth-1);
+   branch(nx,ny,a+(rnd()-.5)*.2,
+    len*.78,depth-1);
+  }
+ }
+
+ for(let i=0;i<95;i++){
+  const side=i%4;
+  let x,y,a;
+
+  if(side===0){
+   x=rnd()*w;y=0;
+   a=Math.PI/2+(rnd()-.5)*1.4;
+  }else if(side===1){
+   x=w;y=rnd()*h;
+   a=Math.PI+(rnd()-.5)*1.4;
+  }else if(side===2){
+   x=rnd()*w;y=h;
+   a=-Math.PI/2+(rnd()-.5)*1.4;
+  }else{
+   x=0;y=rnd()*h;
+   a=(rnd()-.5)*1.4;
+  }
+
+  branch(
+   x,y,a,
+   Math.min(w,h)*(.08+rnd()*.17),
+   5
+  );
+ }
+
+ // Tiny ice crystals.
+ for(let i=0;i<2600;i++){
+  const x=rnd()*w;
+  const y=rnd()*h;
+
+  const edgeStrength=Math.max(
+   Math.abs(x/w-.5)*2,
+   Math.abs(y/h-.5)*2
+  );
+
+  if(rnd()>edgeStrength*.9)continue;
+
+  const a=.08+rnd()*.45;
+  c.fillStyle=`rgba(240,252,255,${a})`;
+
+  const s=.5+rnd()*2.6;
+  c.fillRect(x,y,s,s);
+ }
+}
+
+function drawFrost(time){
+ if(frost<.003)return;
 
  ctx.save();
 
- // Холодный голубой оттенок
- ctx.fillStyle=`rgba(96,186,235,${.09*frost})`;
- ctx.fillRect(0,0,width,height);
+ // Increasing cold tint.
+ ctx.fillStyle=
+  `rgba(75,160,225,${frost*.16})`;
 
- ctx.globalAlpha=frost;
- ctx.drawImage(iceTexture,0,0);
+ ctx.fillRect(0,0,W,H);
 
- // Магическое свечение около ладони
- const x=handX*width;
- const y=handY*height;
- const r=Math.max(width,height)*(.15+.75*frost);
+ // First layer of frost.
+ ctx.globalAlpha=clamp(frost*1.3,0,1);
+ ctx.drawImage(frostCanvas,0,0);
 
- const g=ctx.createRadialGradient(
-  x,y,0,x,y,r
+ // Second layer appears later,
+ // making the screen substantially icier.
+ const heavy=clamp((frost-.48)/.52,0,1);
+
+ if(heavy>0){
+  ctx.globalAlpha=heavy*.46;
+  ctx.drawImage(frostCanvas,0,0);
+
+  ctx.globalAlpha=heavy*.13;
+  ctx.fillStyle="#c6f1ff";
+  ctx.fillRect(0,0,W,H);
+ }
+
+ // Cold glow.
+ ctx.globalAlpha=1;
+
+ const glow=ctx.createRadialGradient(
+  handX,handY,0,
+  handX,handY,
+  Math.max(W,H)*.45
  );
 
- g.addColorStop(
-  0,`rgba(228,250,255,${.10*frost})`
+ glow.addColorStop(
+  0,`rgba(225,249,255,${frost*.12})`
  );
- g.addColorStop(
-  .35,`rgba(132,220,255,${.09*frost})`
+ glow.addColorStop(
+  .35,`rgba(116,207,255,${frost*.1})`
  );
- g.addColorStop(
-  1,'rgba(130,215,255,0)'
- );
+ glow.addColorStop(1,"rgba(116,207,255,0)");
 
- ctx.fillStyle=g;
- ctx.fillRect(0,0,width,height);
+ ctx.fillStyle=glow;
+ ctx.fillRect(0,0,W,H);
 
- // Мерцающие снежные частицы
- for(let i=0;i<65;i++){
+ // Glittering ice crystals.
+ for(let i=0;i<85;i++){
   const a=i*2.399963;
+  const q=(i*.618+time*.000065)%1;
 
-  const phase=(
-   i*.618+
-   t*.00011*(1+i%4*.2)
-  )%1;
+  const rr=(.08+q*.75)*Math.min(W,H);
+  const x=handX+Math.cos(a)*rr;
+  const y=handY+Math.sin(a)*rr;
 
-  const rr=(.08+phase*.7)*
-   Math.min(width,height);
+  if(x<0||x>W||y<0||y>H)continue;
 
-  const px=x+Math.cos(a)*rr;
-  const py=y+Math.sin(a)*rr;
-
-  if(
-   px<0||px>width||
-   py<0||py>height
-  )continue;
-
-  const twinkle=
-   .35+.65*Math.pow(
-    Math.sin(t*.004+i*3),2
-   );
+  const sparkle=
+   .35+.65*Math.sin(time*.004+i*3)**2;
 
   ctx.globalAlpha=
-   frost*(1-phase)*twinkle*.85;
+   frost*(1-q)*sparkle*.85;
 
-  ctx.strokeStyle='#e9fbff';
-  ctx.lineWidth=Math.max(1,width/900);
+  ctx.strokeStyle="#effcff";
+  ctx.lineWidth=Math.max(1,W/900);
 
-  const size=(1.5+i%3)*width/420;
+  const s=(1.5+i%3)*W/420;
 
   ctx.beginPath();
-  ctx.moveTo(px-size,py);
-  ctx.lineTo(px+size,py);
-  ctx.moveTo(px,py-size);
-  ctx.lineTo(px,py+size);
+  ctx.moveTo(x-s,y);
+  ctx.lineTo(x+s,y);
+  ctx.moveTo(x,y-s);
+  ctx.lineTo(x,y+s);
   ctx.stroke();
  }
 
  ctx.restore();
 }
 
-function render(t){
- if(!active)return;
+// Snow particle physics.
+function spawnSnow(){
+ if(snowflakes.length>=MAX_SNOW)return;
 
- if(video.readyState>=2){
-  if(!width||!height)resize();
+ const amount=4+Math.floor(Math.random()*4);
 
-  drawCamera();
+ for(let i=0;i<amount;i++){
+  if(snowflakes.length>=MAX_SNOW)break;
+
+  const radius=1.5+Math.random()*3.8;
+  const spread=handSize*.65;
+
+  snowflakes.push({
+   x:handX+(Math.random()-.5)*spread,
+   y:handY+handSize*.12,
+   vx:(Math.random()-.5)*1.8,
+   vy:.5+Math.random()*1.6,
+   gravity:.025+Math.random()*.045,
+   radius,
+   opacity:.65+Math.random()*.35,
+   angle:Math.random()*Math.PI*2,
+   spin:(Math.random()-.5)*.035,
+   phase:Math.random()*Math.PI*2,
+   age:0,
+   life:150+Math.random()*110
+  });
+ }
+}
+
+function drawSnowflake(p){
+ ctx.save();
+ ctx.translate(p.x,p.y);
+ ctx.rotate(p.angle);
+ ctx.globalAlpha=p.opacity*
+  clamp((p.life-p.age)/35,0,1);
+
+ ctx.strokeStyle="#e8faff";
+ ctx.lineWidth=Math.max(.8,p.radius*.19);
+ ctx.lineCap="round";
+
+ const r=p.radius*2.3;
+
+ for(let i=0;i<3;i++){
+  const a=i*Math.PI/3;
+  const x=Math.cos(a)*r;
+  const y=Math.sin(a)*r;
+
+  ctx.beginPath();
+  ctx.moveTo(-x,-y);
+  ctx.lineTo(x,y);
+  ctx.stroke();
+ }
+
+ ctx.restore();
+}
+
+function updateSnow(dt,time){
+ const factor=dt/16.67;
+
+ if(snowing){
+  spawnSnow();
+ }
+
+ for(let i=snowflakes.length-1;i>=0;i--){
+  const p=snowflakes[i];
+
+  p.age+=factor;
+  p.vy+=p.gravity*factor;
+  p.x+=(
+   p.vx+Math.sin(time*.002+p.phase)*.55
+  )*factor;
+  p.y+=p.vy*factor;
+  p.angle+=p.spin*factor;
 
   if(
-   recognizing&&detector&&
+   p.y>H+20||
+   p.x< -30||
+   p.x>W+30||
+   p.age>=p.life
+  ){
+   snowflakes.splice(i,1);
+   continue;
+  }
+
+  drawSnowflake(p);
+ }
+}
+
+function render(time){
+ if(!running)return;
+
+ if(video.readyState>=2){
+  if(!W||!H)resize();
+
+  drawVideo();
+
+  if(
+   scanning&&detector&&
    video.currentTime!==lastVideoTime&&
-   t-lastDetect>65
+   time-lastDetection>=65
   ){
    lastVideoTime=video.currentTime;
-   lastDetect=t;
+   lastDetection=time;
 
    try{
-    handleDetection(
-     detector.detectForVideo(video,t)
-    );
+    const result=
+     detector.detectForVideo(video,time);
+
+    handleDetection(result,time);
    }catch(e){
     showError(
-     'Ошибка распознавания: '+e.message
+     "Ошибка распознавания: "+e.message
     );
-    stopRecognition();
+    stopScanning();
    }
   }
 
   const dt=Math.min(
-   60,t-(lastFrame||t)
+   60,time-(lastTick||time)
   );
 
-  frost=lerp(
-   frost,
-   frostTarget,
-   1-Math.exp(
-    -dt/(frostTarget?650:500)
-   )
-  );
+  // Freeze takes about 5 seconds to build up.
+  // Thawing is faster but still smooth.
+  const duration=frostTarget?5000:1800;
 
-  drawFrost(t);
+  const step=dt/duration;
+
+  if(frostTarget>frost){
+   frost=Math.min(1,frost+step);
+  }else if(frostTarget<frost){
+   frost=Math.max(0,frost-step);
+  }
+
+  drawFrost(time);
+  updateSnow(dt,time);
  }
 
- lastFrame=t;
+ lastTick=time;
  requestAnimationFrame(render);
 }
 
@@ -549,46 +709,48 @@ async function openCamera(){
  if(!video.videoWidth){
   await new Promise(resolve=>{
    video.addEventListener(
-    'loadedmetadata',
-    resolve,
-    {once:true}
+    "loadedmetadata",resolve,{once:true}
    );
   });
  }
 
  resize();
- lastVideoTime=-1;
 
- setStatus(
-  recognizing
-   ?'✋ Покажи ладонь'
-   :'Камера работает'
- );
+ lastVideoTime=-1;
+ lastSeen=0;
+
+ frost=0;
+ frostTarget=0;
+ snowing=false;
+
+ snowflakes.length=0;
 }
 
-async function loadDetector(){
- const failures=[];
+async function createDetector(){
+ const errors=[];
 
- for(const base of bases){
+ for(const base of BASES){
   try{
+   setStatus("Загрузка модели...");
+
    const mod=await import(
-    base+'/vision_bundle.mjs'
+    base+"/vision_bundle.mjs"
    );
 
    const files=
     await mod.FilesetResolver.forVisionTasks(
-     base+'/wasm'
+     base+"/wasm"
     );
 
-   for(const delegate of ['GPU','CPU']){
+   for(const delegate of ["GPU","CPU"]){
     try{
      return await mod.HandLandmarker.createFromOptions(
       files,{
        baseOptions:{
-        modelAssetPath:modelUrl,
+        modelAssetPath:MODEL,
         delegate
        },
-       runningMode:'VIDEO',
+       runningMode:"VIDEO",
        numHands:1,
        minHandDetectionConfidence:.55,
        minHandPresenceConfidence:.55,
@@ -596,130 +758,138 @@ async function loadDetector(){
       }
      );
     }catch(e){
-     failures.push(
-      delegate+': '+e.message
-     );
+     errors.push(delegate+": "+e.message);
     }
    }
   }catch(e){
-   failures.push(
-    base+': '+e.message
-   );
+   errors.push(base+": "+e.message);
   }
  }
 
- throw new Error(failures.join('\n'));
+ throw Error(errors.join("\n"));
 }
 
-function stopRecognition(){
- recognizing=false;
+function stopScanning(){
+ scanning=false;
  frostTarget=0;
+ snowing=false;
+
  openFrames=0;
  closedFrames=0;
+ downFrames=0;
+ upFrames=0;
 
- scan.textContent=
-  '✋ Включить распознавание';
-
- setStatus('Сканирование выключено');
+ scanBtn.textContent="✋ Включить магию";
+ setStatus("Магия выключена");
 }
 
-async function startRecognition(){
+async function startScanning(){
  if(loading)return;
 
  loading=true;
- scan.disabled=true;
- scan.textContent='⏳ Загрузка модели...';
+ scanBtn.disabled=true;
+ scanBtn.textContent="⏳ Загрузка...";
  clearError();
 
  try{
   if(!detector){
-   detector=await loadDetector();
+   detector=await createDetector();
   }
 
-  recognizing=true;
-  frostTarget=0;
+  scanning=true;
+
   openFrames=0;
   closedFrames=0;
+  downFrames=0;
+  upFrames=0;
+
   lastVideoTime=-1;
 
-  scan.textContent=
-   '⏹ Выключить распознавание';
-
-  setStatus('✋ Покажи ладонь');
+  scanBtn.textContent="⏹ Выключить магию";
+  setStatus("✋ Покажи ладонь");
  }catch(e){
+  scanning=false;
+
   showError(
-   'Не удалось загрузить модель:\n'+
-   e.message
+   "Ошибка загрузки модели:\n"+e.message
   );
 
-  scan.textContent=
-   '↻ Повторить распознавание';
-
-  setStatus('Ошибка загрузки');
+  setStatus("Ошибка сканирования");
+  scanBtn.textContent="↻ Повторить";
  }finally{
   loading=false;
-  scan.disabled=false;
+  scanBtn.disabled=false;
  }
 }
 
-scan.onclick=()=>{
+scanBtn.onclick=()=>{
  if(loading)return;
 
- if(recognizing){
-  stopRecognition();
+ if(scanning){
+  stopScanning();
  }else{
-  startRecognition();
+  startScanning();
  }
 };
 
-el('start').onclick=async()=>{
- const button=el('start');
- button.disabled=true;
- el('error').textContent='';
+$("start").onclick=async()=>{
+ const btn=$("start");
+ btn.disabled=true;
+ $("error").textContent="";
 
  try{
   if(!navigator.mediaDevices?.getUserMedia){
-   throw new Error(
-    'Нужен HTTPS и разрешение на камеру'
+   throw Error(
+    "Нужен HTTPS и доступ к камере"
    );
   }
 
   await openCamera();
 
-  el('overlay').style.display='none';
-  scan.disabled=false;
-  flip.disabled=false;
+  $("overlay").style.display="none";
 
-  if(!active){
-   active=true;
+  scanBtn.disabled=false;
+  switchBtn.disabled=false;
+
+  if(!running){
+   running=true;
    requestAnimationFrame(render);
   }
+
+  setStatus("Камера работает");
  }catch(e){
-  el('error').textContent=e.message;
+  $("error").textContent=e.message;
  }finally{
-  button.disabled=false;
+  btn.disabled=false;
  }
 };
 
-flip.onclick=async()=>{
- flip.disabled=true;
+switchBtn.onclick=async()=>{
+ switchBtn.disabled=true;
 
  const previous=facing;
- facing=facing==='environment'
-  ?'user'
-  :'environment';
+
+ facing=facing==="user"
+  ?"environment"
+  :"user";
 
  try{
   await openCamera();
+  setStatus(
+   scanning
+    ?"✋ Покажи ладонь"
+    :"Камера работает"
+  );
  }catch(e){
   facing=previous;
   showError(
-   'Ошибка смены камеры: '+e.message
+   "Ошибка смены камеры: "+e.message
   );
- }finally{
-  flip.disabled=false;
  }
+
+ switchBtn.disabled=false;
 };
+
 </script>
 </body>
 </html>
